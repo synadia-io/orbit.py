@@ -1,0 +1,76 @@
+name: test
+
+on:
+    push:
+        branches:
+            - "**"
+    pull_request:
+        branches:
+            - "**"
+
+permissions:
+    contents: read
+
+jobs:
+    discover:
+        runs-on: ubuntu-latest
+        name: discover
+        outputs:
+            projects: ${{ steps.find.outputs.projects }}
+        steps:
+            - name: Check out repository
+              uses: actions/checkout@v5
+
+            - name: Discover packages with tests
+              id: find
+              run: |
+                  shopt -s nullglob
+                  projects=$(for dir in orbit-*/; do
+                      [ -d "${dir}tests" ] && echo "${dir%/}"
+                  done | jq -R -s -c 'split("\n") | map(select(length > 0))')
+                  echo "projects=$projects" >> "$GITHUB_OUTPUT"
+                  echo "Discovered: $projects"
+
+    test:
+        needs: discover
+        # Skip cleanly when no packages with tests exist yet (empty matrix).
+        if: ${{ needs.discover.outputs.projects != '[]' }}
+        name: ${{ matrix.project }} (${{ matrix.os }}, python-${{ matrix.python-version }})
+        runs-on: ${{ matrix.os }}
+        timeout-minutes: 20
+        strategy:
+            fail-fast: false
+            matrix:
+                project: ${{ fromJson(needs.discover.outputs.projects) }}
+                os: ["ubuntu-latest", "macos-latest", "windows-latest"]
+                python-version: ["3.13"]
+                nats-server-version: ["latest"]
+
+        steps:
+            - name: Check out repository
+              uses: actions/checkout@v5
+
+            - name: Set up Go
+              uses: actions/setup-go@v6
+              with:
+                  go-version: "stable"
+
+            - name: Install NATS Server
+              run: go install github.com/nats-io/nats-server/v2@${{ matrix.nats-server-version }}
+              shell: bash
+
+            - name: Set up Python ${{ matrix.python-version }}
+              uses: actions/setup-python@v6
+              with:
+                  python-version: ${{ matrix.python-version }}
+
+            - name: Install uv
+              uses: astral-sh/setup-uv@v6
+
+            - name: Install dependencies
+              run: uv sync --dev
+              working-directory: ${{ matrix.project }}
+
+            - name: Run tests for ${{ matrix.project }}
+              run: uv run pytest tests -v -n auto
+              working-directory: ${{ matrix.project }}
