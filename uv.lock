@@ -5,6 +5,7 @@ requires-python = ">=3.13"
 [manifest]
 members = [
     "orbit-counters",
+    "orbit-jetstreamext",
 ]
 
 [manifest.dependency-groups]
@@ -187,6 +188,21 @@ sdist = { url = "https://files.pythonhosted.org/packages/e1/8d/d17254baea57fe4a7
 name = "orbit-counters"
 version = "0.1.0"
 source = { editable = "orbit-counters" }
+dependencies = [
+    { name = "nats-jetstream" },
+    { name = "nkeys" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "nats-jetstream", specifier = ">=0.3.0,<0.4" },
+    { name = "nkeys", specifier = ">=0.1.0" },
+]
+
+[[package]]
+name = "orbit-jetstreamext"
+version = "0.1.0"
+source = { editable = "orbit-jetstreamext" }
 dependencies = [
     { name = "nats-jetstream" },
     { name = "nkeys" },
