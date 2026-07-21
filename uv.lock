@@ -191,12 +191,14 @@ source = { editable = "orbit-counters" }
 dependencies = [
     { name = "nats-jetstream" },
     { name = "nkeys" },
+    { name = "orbit-jetstreamext" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "nats-jetstream", specifier = ">=0.3.0,<0.4" },
     { name = "nkeys", specifier = ">=0.1.0" },
+    { name = "orbit-jetstreamext", editable = "orbit-jetstreamext" },
 ]
 
 [[package]]
