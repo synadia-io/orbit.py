@@ -38,6 +38,8 @@ def _server_version() -> tuple[int, int, int] | None:
 # Batch direct get requires nats-server 2.11+.
 _VERSION = _server_version()
 _BATCH_SUPPORTED = _VERSION is not None and _VERSION >= (2, 11, 0)
+_ATOMIC_PUBLISH_SUPPORTED = _VERSION is not None and _VERSION >= (2, 12, 0)
+_ATOMIC_MESSAGE_ID_SUPPORTED = _VERSION is not None and _VERSION >= (2, 12, 1)
 
 
 def _free_port() -> int:
@@ -75,3 +77,19 @@ async def jetstream(tmp_path: Path) -> AsyncIterator[JetStream]:
             await client.close()
         proc.terminate()
         proc.wait()
+
+
+@pytest_asyncio.fixture
+async def atomic_jetstream(jetstream: JetStream) -> JetStream:
+    """A live JetStream context on a server with atomic publish support."""
+    if not _ATOMIC_PUBLISH_SUPPORTED:
+        pytest.skip("nats-server 2.12+ is required for atomic batch publishing")
+    return jetstream
+
+
+@pytest_asyncio.fixture
+async def atomic_message_id_jetstream(atomic_jetstream: JetStream) -> JetStream:
+    """A live context supporting message IDs inside atomic batches."""
+    if not _ATOMIC_MESSAGE_ID_SUPPORTED:
+        pytest.skip("nats-server 2.12.1+ is required for message IDs in atomic batches")
+    return atomic_jetstream
