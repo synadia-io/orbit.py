@@ -35,6 +35,8 @@ from typing import TYPE_CHECKING
 
 from nats.jetstream.errors import MessageNotFoundError, StreamNotFoundError
 
+from orbit import jetstreamext
+
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
@@ -123,6 +125,25 @@ def _parse_counter_value(data: bytes) -> int:
         raise InvalidCounterValueError(f"invalid counter value: {payload['val']!r}") from exc
 
 
+def _parse_incr(headers: Headers | None) -> int | None:
+    raw = headers.get(COUNTER_INCREMENT_HEADER) if headers is not None else None
+    if not raw:
+        return None
+    try:
+        return int(raw)
+    except (TypeError, ValueError) as exc:
+        raise InvalidCounterValueError(f"invalid counter increment value: {raw!r}") from exc
+
+
+def _entry_from_message(subject: str, data: bytes, headers: Headers | None) -> Entry:
+    return Entry(
+        subject=subject,
+        value=_parse_counter_value(data),
+        sources=_parse_sources(headers),
+        incr=_parse_incr(headers),
+    )
+
+
 def _parse_sources(headers: Headers | None) -> CounterSources | None:
     raw = headers.get(COUNTER_SOURCES_HEADER) if headers is not None else None
     if not raw:
@@ -171,26 +192,23 @@ class Counter:
     async def get(self, subject: str) -> Entry:
         """Return the full entry (value, sources, last increment) for ``subject``."""
         msg = await self._get_last(subject)
-        value = _parse_counter_value(msg.data)
-        sources = _parse_sources(msg.headers)
-        incr: int | None = None
-        raw_incr = msg.headers.get(COUNTER_INCREMENT_HEADER) if msg.headers is not None else None
-        if raw_incr:
-            try:
-                incr = int(raw_incr)
-            except (TypeError, ValueError) as exc:
-                raise InvalidCounterValueError(f"invalid counter increment value: {raw_incr!r}") from exc
-        return Entry(subject=subject, value=value, sources=sources, incr=incr)
+        return _entry_from_message(subject, msg.data, msg.headers)
 
-    def get_multiple(self, subjects: list[str]) -> AsyncIterator[Entry]:
+    async def get_multiple(self, subjects: list[str]) -> AsyncIterator[Entry]:
         """Iterate counter entries for ``subjects`` (wildcards supported).
 
-        **Not yet implemented.** This needs a batch multi-subject direct get
-        (``multi_last``), which will be provided by ``orbit-jetstreamext``.
+        Fetches the latest message for each matching subject with a single batch
+        direct get (``multi_last``). Subjects that have no stored counter are
+        omitted from the results rather than reported.
+
+        Raises:
+            SubjectRequiredError: if ``subjects`` is empty.
+            NoMessagesError: if none of the subjects have a stored counter.
+            InvalidCounterValueError: if a matched message is malformed; this
+                ends iteration (unlike per-subject omission of misses).
         """
-        raise NotImplementedError(
-            "get_multiple requires batch direct get (multi_last); deferred until orbit-jetstreamext"
-        )
+        async for msg in jetstreamext.get_last_msgs_for(self._js, self._stream.name, subjects):
+            yield _entry_from_message(msg.subject, msg.data, msg.headers)
 
     async def _get_last(self, subject: str) -> StreamMessage:
         try:
