@@ -1,348 +1,362 @@
-"""Unit tests for atomic batch publishing."""
+"""Atomic batch protocol tests over a real nats-server connection."""
 
 from __future__ import annotations
 
 import asyncio
 import json
-from collections.abc import AsyncIterator
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 
 import pytest
-from nats.client.errors import NoRespondersError
-from nats.client.message import Message, Status
+from nats.client.message import Headers, Message
 
 from orbit.jetstreamext import (
+    AtomicPublishDuplicateMessageIDError,
+    AtomicPublishIncompleteError,
+    AtomicPublishInvalidCommitError,
+    AtomicPublishInvalidIDError,
+    AtomicPublishMirrorError,
+    AtomicPublishMissingSequenceError,
     AtomicPublishNotEnabledError,
+    AtomicPublishTooManyInflightError,
     AtomicPublishUnsupportedHeaderError,
     BatchClosedError,
-    BatchMessage,
     BatchPublisher,
+    BatchPublishError,
     BatchPublishRequestError,
+    BatchPublishServerError,
     BatchTooLargeError,
-    EmptyBatchError,
     InvalidBatchAckError,
     JetStreamExtError,
     batch_publish,
-    publish_batch,
 )
 
 if TYPE_CHECKING:
+    from nats.client.subscription import Subscription
     from nats.jetstream import JetStream
 
 
-class FakeClient:
-    def __init__(self) -> None:
-        self.publishes: list[tuple[str, bytes, dict[str, str | list[str]]]] = []
-        self.requests: list[tuple[str, bytes, dict[str, str | list[str]], float]] = []
-        self.failure: BaseException | None = None
-        self.response_override: bytes | None = None
-        self.status_override: Status | None = None
-
-    async def publish(
-        self,
-        subject: str,
-        data: bytes,
-        *,
-        headers: dict[str, str | list[str]],
-    ) -> None:
-        if self.failure is not None:
-            raise self.failure
-        self.publishes.append((subject, data, headers))
-
-    async def request(
-        self,
-        subject: str,
-        data: bytes,
-        *,
-        headers: dict[str, str | list[str]],
-        timeout: float,
-        return_on_error: bool,
-    ) -> Message:
-        assert return_on_error
-        if self.failure is not None:
-            raise self.failure
-        self.requests.append((subject, data, headers, timeout))
-        response = self.response_override
-        if response is None and headers.get("Nats-Batch-Commit") == "1":
-            response = json.dumps(
-                {
-                    "stream": "EVENTS",
-                    "seq": 42,
-                    "batch": headers["Nats-Batch-Id"],
-                    "count": int(cast("str", headers["Nats-Batch-Sequence"])),
-                }
-            ).encode()
-        return Message(subject="_INBOX.test", data=response or b"", status=self.status_override)
+async def _subscribe(js: JetStream, subject: str) -> Subscription:
+    subscription = await js.client.subscribe(subject)
+    await js.client.flush()
+    return subscription
 
 
-class FakeJetStream:
-    def __init__(self) -> None:
-        self.client = FakeClient()
+async def _next(subscription: Subscription) -> Message:
+    return await subscription.next(timeout=2.0)
 
 
-def _js() -> tuple[JetStream, FakeClient]:
-    fake = FakeJetStream()
-    return cast("JetStream", fake), fake.client
+async def _respond(js: JetStream, message: Message, data: bytes = b"") -> None:
+    assert message.reply is not None
+    await js.client.publish(message.reply, data)
 
 
-async def test_add_sets_protocol_headers_without_mutating_input() -> None:
-    js, client = _js()
-    headers = {"X-Trace": "abc"}
-    publisher = batch_publish(js, ack_first=False)
+def _ack(message: Message, **overrides: object) -> bytes:
+    assert message.headers is not None
+    response: dict[str, object] = {
+        "stream": "EVENTS",
+        "seq": 42,
+        "batch": message.headers.get("Nats-Batch-Id"),
+        "count": int(message.headers.get("Nats-Batch-Sequence") or "0"),
+    }
+    response.update(overrides)
+    return json.dumps(response).encode()
 
-    await publisher.add("events.one", b"one", headers=headers)
 
-    assert headers == {"X-Trace": "abc"}
+async def test_add_sets_protocol_headers_without_mutating_input(atomic_jetstream: JetStream) -> None:
+    subscription = await _subscribe(atomic_jetstream, "protocol.headers")
+    headers: dict[str, str | list[str]] = {"X-Trace": "abc", "X-Multi": ["one", "two"]}
+    publisher = batch_publish(atomic_jetstream)
+
+    task = asyncio.create_task(publisher.add("protocol.headers", b"one", headers=headers))
+    message = await _next(subscription)
+
+    assert message.data == b"one"
+    assert message.headers is not None
+    assert message.headers.get("X-Trace") == "abc"
+    assert message.headers.get_all("X-Multi") == ["one", "two"]
+    assert message.headers.get("Nats-Batch-Id") == publisher.batch_id
+    assert message.headers.get("Nats-Batch-Sequence") == "1"
+    assert message.headers.get("Nats-Batch-Commit") is None
+    assert headers == {"X-Trace": "abc", "X-Multi": ["one", "two"]}
+
+    await _respond(atomic_jetstream, message)
+    await task
     assert publisher.size == 1
     assert not publisher.is_closed
-    assert client.publishes == [
-        (
-            "events.one",
-            b"one",
-            {
-                "X-Trace": "abc",
-                "Nats-Batch-Id": publisher.batch_id,
-                "Nats-Batch-Sequence": "1",
-            },
-        )
-    ]
+    publisher.discard()
 
 
-async def test_flow_control_requests_first_and_every_nth_message() -> None:
-    js, client = _js()
-    publisher = batch_publish(js, ack_every=2, timeout=1.25)
+async def test_headers_object_is_copied(atomic_jetstream: JetStream) -> None:
+    subscription = await _subscribe(atomic_jetstream, "protocol.headers-object")
+    headers = Headers({"X-Values": ["a", "b"]})
+    publisher = batch_publish(atomic_jetstream)
+
+    task = asyncio.create_task(publisher.add("protocol.headers-object", b"data", headers=headers))
+    message = await _next(subscription)
+    assert message.headers is not None
+    assert message.headers.get_all("X-Values") == ["a", "b"]
+    await _respond(atomic_jetstream, message)
+    await task
+
+    assert headers.get_all("X-Values") == ["a", "b"]
+    publisher.discard()
+
+
+async def test_flow_control_requests_first_and_every_nth_message(atomic_jetstream: JetStream) -> None:
+    subscription = await _subscribe(atomic_jetstream, "protocol.flow")
+    publisher = batch_publish(atomic_jetstream, ack_every=2)
 
     for sequence in range(1, 5):
-        await publisher.add("events.data", str(sequence).encode())
+        task = asyncio.create_task(publisher.add("protocol.flow", str(sequence).encode()))
+        message = await _next(subscription)
+        assert message.headers is not None
+        assert message.headers.get("Nats-Batch-Sequence") == str(sequence)
+        if sequence in {1, 2, 4}:
+            assert message.reply is not None
+            await _respond(atomic_jetstream, message)
+        else:
+            assert message.reply is None
+        await task
 
-    assert [request[2]["Nats-Batch-Sequence"] for request in client.requests] == ["1", "2", "4"]
-    assert [publish[2]["Nats-Batch-Sequence"] for publish in client.publishes] == ["3"]
-    assert all(request[3] == 1.25 for request in client.requests)
+    publisher.discard()
 
 
-async def test_commit_validates_ack_and_closes_publisher() -> None:
-    js, client = _js()
-    publisher = batch_publish(js, ack_first=False)
-    await publisher.add("events.one", b"one")
+async def test_commit_validates_ack_fields_and_closes(atomic_jetstream: JetStream) -> None:
+    subscription = await _subscribe(atomic_jetstream, "protocol.commit")
+    publisher = batch_publish(atomic_jetstream, ack_first=False)
 
-    ack = await publisher.commit("events.two", b"two")
+    await publisher.add("protocol.commit", b"one")
+    first = await _next(subscription)
+    assert first.reply is None
+
+    task = asyncio.create_task(publisher.commit("protocol.commit", b"two", headers={"X-Final": "yes"}))
+    final = await _next(subscription)
+    assert final.reply is not None
+    assert final.headers is not None
+    assert final.headers.get("Nats-Batch-Sequence") == "2"
+    assert final.headers.get("Nats-Batch-Commit") == "1"
+    assert final.headers.get("X-Final") == "yes"
+    await _respond(atomic_jetstream, final, _ack(final, domain="TEST", val="42"))
+    ack = await task
 
     assert ack.stream == "EVENTS"
     assert ack.sequence == 42
     assert ack.batch_id == publisher.batch_id
     assert ack.batch_size == 2
+    assert ack.domain == "TEST"
+    assert ack.value == "42"
     assert publisher.size == 2
     assert publisher.is_closed
-    assert client.requests[-1][2]["Nats-Batch-Commit"] == "1"
     with pytest.raises(BatchClosedError):
-        await publisher.add("events.three", b"three")
+        await publisher.add("protocol.commit", b"three")
+    with pytest.raises(BatchClosedError):
+        await publisher.commit("protocol.commit", b"three")
+    with pytest.raises(BatchClosedError):
+        publisher.discard()
 
 
 @pytest.mark.parametrize(
-    "response",
+    "case",
+    ["not-json", "not-object", "empty", "wrong-batch", "wrong-count", "empty-stream", "bad-domain", "bad-value"],
+)
+async def test_commit_rejects_invalid_ack(atomic_jetstream: JetStream, case: str) -> None:
+    subject = f"protocol.invalid-ack.{case}"
+    subscription = await _subscribe(atomic_jetstream, subject)
+    publisher = batch_publish(atomic_jetstream)
+
+    task = asyncio.create_task(publisher.commit(subject, b"one"))
+    message = await _next(subscription)
+    if case == "not-json":
+        response = b"not json"
+    elif case == "not-object":
+        response = b"[]"
+    elif case == "empty":
+        response = b"{}"
+    elif case == "wrong-batch":
+        response = _ack(message, batch="wrong")
+    elif case == "wrong-count":
+        response = _ack(message, count=2)
+    elif case == "empty-stream":
+        response = _ack(message, stream="")
+    elif case == "bad-domain":
+        response = _ack(message, domain=1)
+    else:
+        response = _ack(message, val=1)
+    await _respond(atomic_jetstream, message, response)
+
+    with pytest.raises(InvalidBatchAckError):
+        await task
+    assert publisher.is_closed
+
+
+@pytest.mark.parametrize("response", [b"not json", b"{}", b"[]", b'{"unexpected":true}'])
+async def test_flow_control_rejects_nonempty_non_error_ack(atomic_jetstream: JetStream, response: bytes) -> None:
+    subject = "protocol.invalid-flow"
+    subscription = await _subscribe(atomic_jetstream, subject)
+    publisher = batch_publish(atomic_jetstream)
+
+    task = asyncio.create_task(publisher.add(subject, b"one"))
+    message = await _next(subscription)
+    await _respond(atomic_jetstream, message, response)
+
+    with pytest.raises(InvalidBatchAckError):
+        await task
+    assert publisher.is_closed
+
+
+@pytest.mark.parametrize(
+    ("error_code", "error_type"),
     [
-        b"not json",
-        b"{}",
-        b'{"stream":"EVENTS","seq":1,"batch":"wrong","count":1}',
-        b'{"stream":"","seq":1,"batch":"unused","count":1}',
+        (10174, AtomicPublishNotEnabledError),
+        (10175, AtomicPublishMissingSequenceError),
+        (10176, AtomicPublishIncompleteError),
+        (10177, AtomicPublishUnsupportedHeaderError),
+        (10179, AtomicPublishInvalidIDError),
+        (10198, AtomicPublishMirrorError),
+        (10200, AtomicPublishInvalidCommitError),
+        (10201, AtomicPublishDuplicateMessageIDError),
+        (10210, AtomicPublishTooManyInflightError),
     ],
 )
-async def test_commit_rejects_invalid_ack(response: bytes) -> None:
-    js, client = _js()
-    client.response_override = response
-    publisher = batch_publish(js)
-    with pytest.raises(InvalidBatchAckError):
-        await publisher.commit("events.one", b"one")
-    assert publisher.is_closed
+async def test_server_error_mapping_over_real_transport(
+    atomic_jetstream: JetStream,
+    error_code: int,
+    error_type: type[BatchPublishServerError],
+) -> None:
+    subject = f"protocol.error.{error_code}"
+    subscription = await _subscribe(atomic_jetstream, subject)
+    publisher = batch_publish(atomic_jetstream)
 
-
-async def test_server_error_maps_to_specific_type_and_closes() -> None:
-    js, client = _js()
-    client.response_override = json.dumps(
-        {"error": {"code": 400, "err_code": 10174, "description": "atomic publish is disabled"}}
+    task = asyncio.create_task(publisher.add(subject, b"one"))
+    message = await _next(subscription)
+    response = json.dumps(
+        {"error": {"code": 400, "err_code": error_code, "description": f"server error {error_code}"}}
     ).encode()
-    publisher = batch_publish(js)
+    await _respond(atomic_jetstream, message, response)
 
-    with pytest.raises(AtomicPublishNotEnabledError) as raised:
-        await publisher.add("events.one", b"one")
-
+    with pytest.raises(error_type) as raised:
+        await task
     assert raised.value.code == 400
-    assert raised.value.error_code == 10174
+    assert raised.value.error_code == error_code
+    assert raised.value.description == f"server error {error_code}"
+    assert publisher.is_closed
+    with pytest.raises(BatchClosedError):
+        await publisher.add(subject, b"two")
+    with pytest.raises(BatchClosedError):
+        await publisher.commit(subject, b"two")
+
+
+async def test_unknown_server_error_retains_metadata(atomic_jetstream: JetStream) -> None:
+    subscription = await _subscribe(atomic_jetstream, "protocol.error.unknown")
+    publisher = batch_publish(atomic_jetstream)
+    task = asyncio.create_task(publisher.add("protocol.error.unknown", b"one"))
+    message = await _next(subscription)
+    response = json.dumps({"error": {"code": 503, "err_code": 19999, "description": "future error"}}).encode()
+    await _respond(atomic_jetstream, message, response)
+
+    with pytest.raises(BatchPublishServerError) as raised:
+        await task
+    assert type(raised.value) is BatchPublishServerError
+    assert raised.value.code == 503
+    assert raised.value.error_code == 19999
+    assert raised.value.description == "future error"
+
+
+async def test_server_too_large_error_maps_to_client_limit_type(atomic_jetstream: JetStream) -> None:
+    subscription = await _subscribe(atomic_jetstream, "protocol.error.10199")
+    publisher = batch_publish(atomic_jetstream)
+    task = asyncio.create_task(publisher.add("protocol.error.10199", b"one"))
+    message = await _next(subscription)
+    response = json.dumps(
+        {"error": {"code": 400, "err_code": 10199, "description": "batch exceeds server limit"}}
+    ).encode()
+    await _respond(atomic_jetstream, message, response)
+
+    with pytest.raises(BatchTooLargeError, match="server limit"):
+        await task
     assert publisher.is_closed
 
 
-async def test_request_failure_is_typed_and_closes() -> None:
-    js, client = _js()
-    client.failure = TimeoutError("late")
-    publisher = batch_publish(js)
+async def test_request_timeout_is_typed_and_closes(atomic_jetstream: JetStream) -> None:
+    await _subscribe(atomic_jetstream, "protocol.silent")
+    publisher = batch_publish(atomic_jetstream, timeout=0.05)
 
     with pytest.raises(BatchPublishRequestError) as raised:
-        await publisher.add("events.one", b"one")
+        await publisher.add("protocol.silent", b"one")
 
     assert isinstance(raised.value.__cause__, TimeoutError)
     assert publisher.is_closed
 
 
-async def test_status_only_request_failure_is_typed_and_closes() -> None:
-    js, client = _js()
-    client.status_override = Status(code="503", description="No Responders")
-    publisher = batch_publish(js)
+async def test_commit_timeout_is_typed_closes_and_prevents_reuse(atomic_jetstream: JetStream) -> None:
+    await _subscribe(atomic_jetstream, "protocol.commit.silent")
+    publisher = batch_publish(atomic_jetstream, timeout=0.05)
 
     with pytest.raises(BatchPublishRequestError) as raised:
-        await publisher.add("events.one", b"one")
+        await publisher.commit("protocol.commit.silent", b"one")
 
-    assert "503: No Responders" in str(raised.value)
-    assert isinstance(raised.value.__cause__, NoRespondersError)
-    assert raised.value.__cause__.status == "503"
-    assert raised.value.__cause__.subject == "events.one"
+    assert isinstance(raised.value.__cause__, TimeoutError)
     assert publisher.is_closed
+    with pytest.raises(BatchClosedError):
+        await publisher.add("protocol.commit.silent", b"two")
 
 
-async def test_non_ack_publish_failure_closes() -> None:
-    js, client = _js()
-    client.failure = RuntimeError("closed")
-    publisher = batch_publish(js, ack_first=False)
+async def test_non_ack_publish_on_closed_connection_is_typed_and_closes(atomic_jetstream: JetStream) -> None:
+    publisher = batch_publish(atomic_jetstream, ack_first=False)
+    await atomic_jetstream.client.close()
 
     with pytest.raises(BatchPublishRequestError) as raised:
-        await publisher.add("events.one", b"one")
+        await publisher.add("protocol.closed", b"one")
 
     assert isinstance(raised.value.__cause__, RuntimeError)
     assert publisher.is_closed
 
 
-@pytest.mark.parametrize("ack_first", [True, False])
-async def test_cancellation_during_add_io_closes_and_propagates(ack_first: bool) -> None:
-    js, client = _js()
-    cancelled = asyncio.CancelledError("stop")
-    client.failure = cancelled
-    publisher = batch_publish(js, ack_first=ack_first)
+async def test_cancellation_during_request_closes_and_propagates(atomic_jetstream: JetStream) -> None:
+    subscription = await _subscribe(atomic_jetstream, "protocol.cancel")
+    publisher = batch_publish(atomic_jetstream, timeout=5.0)
+
+    task = asyncio.create_task(publisher.add("protocol.cancel", b"one"))
+    await _next(subscription)
+    task.cancel("stop")
 
     with pytest.raises(asyncio.CancelledError) as raised:
-        await publisher.add("events.one", b"one")
-
-    assert raised.value is cancelled
-    assert raised.value.__cause__ is None
+        await task
+    assert raised.value.args == ("stop",)
     assert publisher.is_closed
+
+
+async def test_cancellation_during_commit_closes_and_propagates(atomic_jetstream: JetStream) -> None:
+    subscription = await _subscribe(atomic_jetstream, "protocol.commit.cancel")
+    publisher = batch_publish(atomic_jetstream, timeout=5.0)
+
+    task = asyncio.create_task(publisher.commit("protocol.commit.cancel", b"one"))
+    await _next(subscription)
+    task.cancel("stop commit")
+
+    with pytest.raises(asyncio.CancelledError) as raised:
+        await task
+    assert raised.value.args == ("stop commit",)
+    assert publisher.is_closed
+    with pytest.raises(BatchClosedError):
+        await publisher.commit("protocol.commit.cancel", b"two")
 
 
 @pytest.mark.parametrize(
     "header",
-    [
-        "nats-expected-last-msg-id",
-        "Nats-Batch-Id",
-        "nats-batch-sequence",
-        "Nats-Batch-Commit",
-    ],
+    ["nats-expected-last-msg-id", "Nats-Batch-Id", "nats-batch-sequence", "Nats-Batch-Commit"],
 )
-async def test_managed_and_unsupported_headers_are_rejected_case_insensitively(header: str) -> None:
-    js, client = _js()
-    publisher = batch_publish(js)
+async def test_managed_and_unsupported_headers_are_rejected_case_insensitively(
+    atomic_jetstream: JetStream,
+    header: str,
+) -> None:
+    publisher = batch_publish(atomic_jetstream)
 
     with pytest.raises(AtomicPublishUnsupportedHeaderError):
-        await publisher.add("events.one", b"one", headers={header: "bad"})
+        await publisher.add("protocol.validation", b"one", headers={header: "bad"})
 
     assert not publisher.is_closed
     assert publisher.size == 0
-    assert not client.publishes
-    assert not client.requests
-
-
-async def test_unique_message_id_is_preserved() -> None:
-    js, client = _js()
-    publisher = batch_publish(js, ack_first=False)
-
-    await publisher.add("events.one", b"one", headers={"Nats-Msg-Id": "message-1"})
-
-    assert client.publishes[0][2]["Nats-Msg-Id"] == "message-1"
-    assert not publisher.is_closed
-
-
-async def test_expected_last_sequence_is_allowed_only_on_first_message() -> None:
-    js, _ = _js()
-    publisher = batch_publish(js)
-    await publisher.add("events.one", b"one", headers={"Nats-Expected-Last-Sequence": "0"})
-
-    with pytest.raises(AtomicPublishUnsupportedHeaderError):
-        await publisher.add("events.two", b"two", headers={"Nats-Expected-Last-Sequence": "0"})
-
-    assert not publisher.is_closed
-    assert publisher.size == 1
-    ack = await publisher.commit("events.two", b"two")
-    assert ack.batch_size == 2
-
-
-async def test_batch_limit_includes_commit_message() -> None:
-    js, _ = _js()
-    publisher = batch_publish(js, ack_first=False)
-    for _ in range(999):
-        await publisher.add("events.data", b"data")
-    ack = await publisher.commit("events.final", b"final")
-    assert ack.batch_size == 1000
-
-    publisher = batch_publish(js, ack_first=False)
-    for _ in range(1000):
-        await publisher.add("events.data", b"data")
-    with pytest.raises(BatchTooLargeError):
-        await publisher.commit("events.final", b"final")
-    assert not publisher.is_closed
-
-
-async def test_discard_closes_without_io() -> None:
-    js, client = _js()
-    publisher = batch_publish(js, ack_first=False)
-    await publisher.add("events.one", b"one")
-    publisher.discard()
-
-    assert publisher.is_closed
-    assert not client.requests
-    with pytest.raises(BatchClosedError):
-        publisher.discard()
-
-
-async def test_publish_batch_accepts_regular_iterable() -> None:
-    js, client = _js()
-    ack = await publish_batch(
-        js,
-        [
-            BatchMessage("events.one", b"one", {"X-Source": "test"}),
-            BatchMessage("events.two", b"two"),
-            BatchMessage("events.three", b"three"),
-        ],
-        ack_first=False,
-    )
-
-    assert ack.batch_size == 3
-    assert len(client.publishes) == 2
-    assert len(client.requests) == 1
-    assert client.requests[0][2]["Nats-Batch-Commit"] == "1"
-
-
-async def test_publish_batch_accepts_async_iterable() -> None:
-    js, _ = _js()
-
-    async def messages() -> AsyncIterator[BatchMessage]:
-        yield BatchMessage("events.one", b"one")
-        yield BatchMessage("events.two", b"two")
-
-    ack = await publish_batch(js, messages())
-    assert ack.batch_size == 2
-
-
-async def test_publish_batch_single_message_commits_it() -> None:
-    js, client = _js()
-    ack = await publish_batch(js, [BatchMessage("events.one", b"one")])
-    assert ack.batch_size == 1
-    assert not client.publishes
-    assert client.requests[0][2]["Nats-Batch-Sequence"] == "1"
-    assert client.requests[0][2]["Nats-Batch-Commit"] == "1"
-
-
-async def test_publish_batch_rejects_empty_and_wrong_item() -> None:
-    js, _ = _js()
-    with pytest.raises(EmptyBatchError):
-        await publish_batch(js, [])
-    with pytest.raises(TypeError, match="BatchMessage"):
-        await publish_batch(js, cast("Any", [("events.one", b"one")]))
 
 
 @pytest.mark.parametrize(
@@ -356,11 +370,13 @@ async def test_publish_batch_rejects_empty_and_wrong_item() -> None:
         ({"timeout": float("nan")}, "timeout"),
     ],
 )
-def test_invalid_configuration(kwargs: dict[str, Any], match: str) -> None:
-    js, _ = _js()
+async def test_invalid_configuration(atomic_jetstream: JetStream, kwargs: dict[str, Any], match: str) -> None:
     with pytest.raises(ValueError, match=match):
-        BatchPublisher(js, **kwargs)
+        BatchPublisher(atomic_jetstream, **kwargs)
 
 
-def test_batch_errors_share_package_base() -> None:
+async def test_batch_errors_share_package_base(atomic_jetstream: JetStream) -> None:
+    publisher = batch_publish(atomic_jetstream)
+    assert publisher.batch_id
     assert issubclass(BatchTooLargeError, JetStreamExtError)
+    assert issubclass(BatchPublishRequestError, BatchPublishError)

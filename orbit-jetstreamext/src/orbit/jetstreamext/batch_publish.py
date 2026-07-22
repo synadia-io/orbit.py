@@ -347,6 +347,7 @@ class BatchPublisher:
                     parsed = _parse_json(response)
                     if error := _server_error(parsed):
                         raise error
+                    raise InvalidBatchAckError("server returned an invalid flow-control acknowledgement")
             else:
                 await self._publish(subject, data, outbound_headers)
         except BaseException:

@@ -1,9 +1,4 @@
-"""Integration fixtures: launch a local nats-server and connect.
-
-The integration tests need a nats-server binary (2.11+ for batch direct get).
-If none is available on PATH, the fixture skips the dependent tests so the unit
-suite still runs everywhere.
-"""
+"""Integration fixtures: launch a local nats-server and connect."""
 
 from __future__ import annotations
 
@@ -52,7 +47,7 @@ def _free_port() -> int:
 async def jetstream(tmp_path: Path) -> AsyncIterator[JetStream]:
     server_bin = _NATS_SERVER
     if server_bin is None or not _BATCH_SUPPORTED:
-        pytest.skip("nats-server 2.11+ is required for batch direct get integration tests")
+        pytest.fail("nats-server 2.11+ is required for integration tests")
 
     port = _free_port()
     proc = subprocess.Popen(
@@ -70,7 +65,7 @@ async def jetstream(tmp_path: Path) -> AsyncIterator[JetStream]:
             except Exception:
                 await asyncio.sleep(0.1)
         if client is None:
-            pytest.skip("could not connect to nats-server")
+            pytest.fail("could not connect to nats-server")
         yield new_jetstream(client, strict=True)
     finally:
         if client is not None:
@@ -83,7 +78,7 @@ async def jetstream(tmp_path: Path) -> AsyncIterator[JetStream]:
 async def atomic_jetstream(jetstream: JetStream) -> JetStream:
     """A live JetStream context on a server with atomic publish support."""
     if not _ATOMIC_PUBLISH_SUPPORTED:
-        pytest.skip("nats-server 2.12+ is required for atomic batch publishing")
+        pytest.fail("nats-server 2.12+ is required for atomic batch publishing")
     return jetstream
 
 
