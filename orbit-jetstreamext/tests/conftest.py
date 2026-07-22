@@ -38,6 +38,15 @@ def _server_version() -> tuple[int, int, int] | None:
 # Batch direct get requires nats-server 2.11+.
 _VERSION = _server_version()
 _BATCH_SUPPORTED = _VERSION is not None and _VERSION >= (2, 11, 0)
+_FAST_PUBLISH_SUPPORTED = _VERSION is not None and _VERSION >= (2, 14, 0)
+
+
+@pytest.fixture
+def require_fast_publish_server() -> None:
+    """Skip fast-ingest tests unless nats-server 2.14+ is available."""
+
+    if not _FAST_PUBLISH_SUPPORTED:
+        pytest.skip("nats-server 2.14+ is required for fast-ingest publish integration tests")
 
 
 def _free_port() -> int:
