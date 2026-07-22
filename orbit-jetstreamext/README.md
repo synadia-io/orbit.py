@@ -46,6 +46,8 @@ ack = await batch.commit("events.c", b"three")
 print(ack.stream, ack.batch_id, ack.batch_size)
 
 # To end without storing a final message, use `await batch.close()` instead.
+# To abandon an unfinished publisher while keeping already stored messages,
+# use `await batch.abort()` or own it with `async with`.
 ```
 
 ## API
@@ -95,6 +97,11 @@ asyncio task at a time. Create separate publishers for concurrent batches.
   `nats.jetstream.PublishAck` with `batch_id` and `batch_size` populated.
 - `await close()` sends an unstored end-of-batch marker and returns the same
   final ack shape. Closing an empty publisher is an error.
+- `await abort()` (also available as `await aclose()`) releases an unfinished
+  publisher's inbox without sending a commit marker. Already stored messages
+  remain stored. `async with fast_publish(js) as batch:` aborts on exit unless
+  the batch was already committed or closed. Garbage-collection cleanup is
+  best-effort; use one of these explicit forms for reliable cleanup.
 - `size`, `is_closed`, `batch_id`, `inbox`, `gap_mode`, and
   `last_ack_sequence` expose publisher state. `size` counts messages
   successfully handed to the core client; an asynchronously server-rejected
@@ -119,4 +126,6 @@ invalid-batch-id, unknown-batch-id, and too-many-inflight errors. API errors
 retain `code`, `error_code`, `description`, and the batch sequence when the
 server provides it. In fail-on-gap mode, gap and flow errors also retain the
 following terminal acknowledgement as `publish_ack` when it arrives before the
-ack deadline, exposing how many messages were actually persisted.
+ack deadline, exposing the server's terminal batch count. Successful terminal
+acknowledgements are checked against the publisher's batch ID and message count;
+malformed or mismatched terminal responses fail the batch and release its inbox.

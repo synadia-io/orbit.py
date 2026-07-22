@@ -16,7 +16,7 @@ import json
 import math
 from dataclasses import dataclass
 from enum import IntEnum, StrEnum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from nats.client.message import Headers, Message
 from nats.jetstream import PublishAck
@@ -57,6 +57,8 @@ __all__ = [
 _DEFAULT_FLOW = 100
 _DEFAULT_MAX_OUTSTANDING_ACKS = 2
 _DEFAULT_ACK_TIMEOUT = 5.0
+_MAX_U16 = 2**16 - 1
+_MAX_U64 = 2**64 - 1
 
 
 class GapMode(StrEnum):
@@ -211,6 +213,20 @@ def _integer(data: Mapping[str, object], key: str) -> int:
     return value
 
 
+def _positive_integer(data: Mapping[str, object], key: str, *, maximum: int = _MAX_U64) -> int:
+    value = _integer(data, key)
+    if value <= 0 or value > maximum:
+        raise FastPublishResponseError(f"fast publish response has invalid {key!r}: {value!r}")
+    return value
+
+
+def _nonnegative_integer(data: Mapping[str, object], key: str) -> int:
+    value = _integer(data, key)
+    if value < 0 or value > _MAX_U64:
+        raise FastPublishResponseError(f"fast publish response has invalid {key!r}: {value!r}")
+    return value
+
+
 def _classify(payload: bytes) -> _ServerEvent:
     try:
         decoded = json.loads(payload)
@@ -222,17 +238,20 @@ def _classify(payload: bytes) -> _ServerEvent:
 
     event_type = decoded.get("type")
     if event_type == "ack":
-        return _FlowAck(sequence=_integer(decoded, "seq"), messages=_integer(decoded, "msgs"))
+        return _FlowAck(
+            sequence=_nonnegative_integer(decoded, "seq"),
+            messages=_positive_integer(decoded, "msgs", maximum=_MAX_U16),
+        )
     if event_type == "gap":
         return _FlowGap(
-            expected_last_sequence=_integer(decoded, "last_seq"),
-            current_sequence=_integer(decoded, "seq"),
+            expected_last_sequence=_nonnegative_integer(decoded, "last_seq"),
+            current_sequence=_positive_integer(decoded, "seq"),
         )
     if event_type == "err":
         error = decoded.get("error")
         if not isinstance(error, dict):
             raise FastPublishResponseError("fast publish flow error is missing its API error")
-        return _FlowError(sequence=_integer(decoded, "seq"), error=error)
+        return _FlowError(sequence=_positive_integer(decoded, "seq"), error=error)
     if event_type is not None:
         raise FastPublishResponseError(f"unknown fast publish response type: {event_type!r}")
 
@@ -240,13 +259,20 @@ def _classify(payload: bytes) -> _ServerEvent:
     if isinstance(error, dict):
         return _InitialError(error=error)
 
-    try:
-        ack = PublishAck.from_response(decoded.copy())
-    except (KeyError, TypeError, ValueError) as exc:
-        raise FastPublishResponseError("invalid final fast publish acknowledgement") from exc
-    if ack.batch_id is None or ack.batch_size is None:
-        raise FastPublishResponseError("final fast publish acknowledgement is missing batch metadata")
-    return _TerminalAck(ack=ack)
+    stream = decoded.get("stream")
+    sequence = decoded.get("seq")
+    batch_id = decoded.get("batch")
+    batch_size = decoded.get("count")
+    if not isinstance(stream, str) or not stream:
+        raise FastPublishResponseError("final fast publish acknowledgement has an invalid stream")
+    if isinstance(sequence, bool) or not isinstance(sequence, int) or not 0 <= sequence <= _MAX_U64:
+        raise FastPublishResponseError("final fast publish acknowledgement has an invalid stream sequence")
+    if not isinstance(batch_id, str) or not batch_id:
+        raise FastPublishResponseError("final fast publish acknowledgement has an invalid batch id")
+    if isinstance(batch_size, bool) or not isinstance(batch_size, int) or not 0 <= batch_size <= _MAX_U64:
+        raise FastPublishResponseError("final fast publish acknowledgement has an invalid batch count")
+
+    return _TerminalAck(ack=PublishAck.from_response(decoded.copy()))
 
 
 def _api_integer(error: Mapping[str, object], key: str) -> int | None:
@@ -420,6 +446,42 @@ class FastPublisher:
             self._add_message(Message(subject=subject, data=data, headers=_headers(headers)))
         )
 
+    async def __aenter__(self) -> FastPublisher:
+        """Enter an async context that owns this publisher's inbox."""
+
+        await self._raise_if_unusable()
+        return self
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        traceback: object | None,
+    ) -> None:
+        """Release an unfinished publisher when leaving an async context."""
+
+        await self.abort()
+
+    def __del__(self) -> None:
+        """Schedule best-effort inbox cleanup when an unfinished publisher is dropped.
+
+        Finalization cannot be made reliable once the event loop is gone; callers
+        that intentionally abandon a batch should use :meth:`abort`, :meth:`aclose`,
+        or the async context-manager protocol.
+        """
+
+        subscription = getattr(self, "_subscription", None)
+        if subscription is None or subscription.closed:
+            return
+        self._closed = True
+        self._subscription = None
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return
+        cleanup = loop.create_task(subscription.unsubscribe())
+        cleanup.add_done_callback(_consume_task_exception)
+
     async def add_message(self, message: Message) -> FastPubAck:
         """Publish a pre-constructed message, replacing its reply subject."""
 
@@ -480,6 +542,20 @@ class FastPublisher:
 
         return await self._run_operation(self._close())
 
+    async def abort(self) -> None:
+        """Abandon this client-side publisher without sending a commit marker.
+
+        Messages already accepted by the server remain stored. The server-side
+        fast batch expires after its inactivity timeout.
+        """
+
+        await self._finish()
+
+    async def aclose(self) -> None:
+        """Alias for :meth:`abort`, suitable for generic async cleanup code."""
+
+        await self.abort()
+
     async def _close(self) -> PublishAck:
         await self._raise_if_unusable()
         if self._sequence == 0 or self._first_subject is None:
@@ -505,9 +581,13 @@ class FastPublisher:
             if not eob:
                 self._message_count += 1
             self._closed = True
-            return await self._wait_for_pub_ack()
-        finally:
+            ack = await self._wait_for_pub_ack(expected_count=self._message_count)
+        except BaseException:
+            await self._finish(preserve_exception=True)
+            raise
+        else:
             await self._finish()
+            return ack
 
     async def _run_operation(self, operation: Awaitable[_T]) -> _T:
         try:
@@ -519,7 +599,7 @@ class FastPublisher:
         except BaseException:
             # Preserve the exact cancellation/callback exception. Cleanup is
             # shielded so a second cancellation cannot leave the inbox live.
-            await self._finish()
+            await self._finish(preserve_exception=True)
             raise
 
     async def _raise_if_unusable(self) -> None:
@@ -533,7 +613,7 @@ class FastPublisher:
             if self._fatal_needs_terminal_ack:
                 error.publish_ack = await self._collect_terminal_ack_best_effort()
                 self._fatal_needs_terminal_ack = False
-            await self._finish()
+            await self._finish(preserve_exception=True)
             raise error
 
     async def _ensure_subscribed(self) -> None:
@@ -555,7 +635,7 @@ class FastPublisher:
                 headers=message.headers,
             )
         except Exception as exc:
-            await self._finish()
+            await self._finish(preserve_exception=True)
             raise FastPublishPublishError(
                 f"failed to publish fast batch message {self._sequence}",
                 batch_sequence=self._sequence,
@@ -570,7 +650,7 @@ class FastPublisher:
                 self._handle_event(_classify((await subscription.next()).data))
             except FastPublishError as error:
                 self._fatal = error
-                await self._finish()
+                await self._finish(preserve_exception=True)
                 raise
 
     def _handle_event(self, event: _ServerEvent) -> None:
@@ -619,7 +699,10 @@ class FastPublisher:
 
         if self._pending_pub_ack is not None:
             ack, self._pending_pub_ack = self._pending_pub_ack, None
-            return ack
+            try:
+                return self._validate_terminal_ack(ack, allow_partial=True)
+            except FastPublishResponseError:
+                return None
 
         subscription = self._subscription
         if subscription is None:
@@ -642,7 +725,10 @@ class FastPublisher:
                 return None
 
             if isinstance(event, _TerminalAck):
-                return event.ack
+                try:
+                    return self._validate_terminal_ack(event.ack, allow_partial=True)
+                except FastPublishResponseError:
+                    return None
             if isinstance(event, _FlowAck):
                 self._last_ack_sequence = max(self._last_ack_sequence, event.sequence)
                 self._effective_flow = max(1, event.messages)
@@ -673,18 +759,18 @@ class FastPublisher:
                 await self._send_ping()
                 ping_at = loop.time() + ping_interval
 
-    async def _wait_for_pub_ack(self) -> PublishAck:
+    async def _wait_for_pub_ack(self, *, expected_count: int | None = None) -> PublishAck:
         # Commit-time pings solicit flow progress/liveness only. nats-server
         # 2.14 does not replay a lost terminal PubAck in response to a ping.
         if self._pending_pub_ack is not None:
             ack, self._pending_pub_ack = self._pending_pub_ack, None
-            return ack
+            return self._validate_terminal_ack(ack, expected_count=expected_count)
 
         loop = asyncio.get_running_loop()
         deadline = loop.time() + self._ack_timeout
         ping_interval = max(self._ack_timeout / 3, 0.1)
         ping_at = loop.time() + ping_interval
-        while self._pending_pub_ack is None:
+        while True:
             await self._wait_for_event(deadline, wake_at=ping_at)
             await self._raise_fatal()
             if self._pending_pub_ack is not None:
@@ -695,6 +781,34 @@ class FastPublisher:
 
         ack, self._pending_pub_ack = self._pending_pub_ack, None
         assert ack is not None
+        return self._validate_terminal_ack(ack, expected_count=expected_count)
+
+    def _validate_terminal_ack(
+        self,
+        ack: PublishAck,
+        *,
+        expected_count: int | None = None,
+        allow_partial: bool = False,
+    ) -> PublishAck:
+        """Validate that a terminal PubAck belongs to this publisher."""
+
+        if ack.batch_id != self._batch_id:
+            raise FastPublishResponseError(
+                f"final fast publish acknowledgement has batch id {ack.batch_id!r}, expected {self._batch_id!r}"
+            )
+        count = cast(int, ack.batch_size)
+        sequence = cast(int, ack.sequence)
+        if sequence == 0 and not (allow_partial and count == 0):
+            raise FastPublishResponseError("final fast publish acknowledgement has an invalid stream sequence")
+        if allow_partial:
+            if count > self._message_count:
+                raise FastPublishResponseError(
+                    f"final fast publish acknowledgement count {count} exceeds published count {self._message_count}"
+                )
+        elif expected_count is not None and count != expected_count:
+            raise FastPublishResponseError(
+                f"final fast publish acknowledgement count {count} does not match published count {expected_count}"
+            )
         return ack
 
     async def _wait_for_event(self, deadline: float, *, wake_at: float | None = None) -> None:
@@ -713,13 +827,13 @@ class FastPublisher:
                 await self._timeout()
             return
         except RuntimeError as exc:
-            await self._finish()
+            await self._finish(preserve_exception=True)
             raise FastPublishClosedError("fast publish inbox subscription ended") from exc
         try:
             self._handle_event(_classify(message.data))
         except FastPublishError as error:
             self._fatal = error
-            await self._finish()
+            await self._finish(preserve_exception=True)
             raise
 
     async def _send_ping(self) -> None:
@@ -730,23 +844,27 @@ class FastPublisher:
         try:
             await self._client.publish(self._first_subject, b"", reply=reply)
         except Exception as exc:
-            await self._finish()
+            await self._finish(preserve_exception=True)
             raise FastPublishPublishError("failed to ping fast publish batch") from exc
 
     async def _timeout(self) -> None:
         await self._finish()
         raise FastPublishTimeoutError("timed out waiting for fast publish acknowledgement")
 
-    async def _finish(self) -> None:
+    async def _finish(self, *, preserve_exception: bool = False) -> None:
         self._closed = True
         subscription, self._subscription = self._subscription, None
         if subscription is not None and not subscription.closed:
             cleanup = asyncio.create_task(subscription.unsubscribe())
             try:
                 await asyncio.shield(cleanup)
+            except asyncio.CancelledError:
+                cleanup.add_done_callback(_consume_task_exception)
+                if not preserve_exception:
+                    raise
             except BaseException:
-                # Cleanup is strictly best-effort and must never replace the
-                # cancellation or callback failure that made us terminal.
+                # Transport teardown is best-effort and must not replace the
+                # operation outcome that made this publisher terminal.
                 pass
 
 
@@ -754,6 +872,13 @@ def _headers(headers: Headers | dict[str, str | list[str]] | None) -> Headers | 
     if headers is None or isinstance(headers, Headers):
         return headers
     return Headers(headers)
+
+
+def _consume_task_exception(task: asyncio.Task[None]) -> None:
+    """Retrieve a finalizer cleanup exception so asyncio does not log it."""
+
+    if not task.cancelled():
+        task.exception()
 
 
 def fast_publish(
