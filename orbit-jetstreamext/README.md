@@ -50,6 +50,23 @@ print(ack.stream, ack.batch_id, ack.batch_size)
 # use `await batch.abort()` or own it with `async with`.
 ```
 
+A self-contained [fast-publish example](examples/fast_publish.py) creates a
+temporary demo stream, prints flow-control progress and the final batch
+acknowledgement, then removes the stream. Start a JetStream-enabled nats-server
+2.14 or newer in one terminal:
+
+```sh
+nats-server -js
+```
+
+Then run the example from the repository root in another terminal:
+
+```sh
+uv run --package orbit-jetstreamext python orbit-jetstreamext/examples/fast_publish.py
+```
+
+Set `NATS_URL` to use a server other than `nats://127.0.0.1:4222`.
+
 ## API
 
 ### `get_batch(js, stream, batch, *, seq=None, next_by_subject=None, start_time=None, max_bytes=None, timeout=5.0)`
