@@ -44,7 +44,7 @@ def _free_port() -> int:
 
 
 @pytest_asyncio.fixture
-async def jetstream(tmp_path: Path) -> AsyncIterator[JetStream]:
+async def nats_server_url(tmp_path: Path) -> AsyncIterator[str]:
     server_bin = _NATS_SERVER
     if server_bin is None or not _BATCH_SUPPORTED:
         pytest.fail("nats-server 2.11+ is required for integration tests")
@@ -56,22 +56,40 @@ async def jetstream(tmp_path: Path) -> AsyncIterator[JetStream]:
         stderr=subprocess.DEVNULL,
     )
     url = f"nats://127.0.0.1:{port}"
-    client = None
+    probe = None
     try:
         for _ in range(50):
             try:
-                client = await connect(url)
+                probe = await connect(url)
                 break
             except Exception:
                 await asyncio.sleep(0.1)
-        if client is None:
+        if probe is None:
             pytest.fail("could not connect to nats-server")
-        yield new_jetstream(client, strict=True)
+        await probe.close()
+        yield url
     finally:
-        if client is not None:
-            await client.close()
+        if probe is not None:
+            await probe.close()
         proc.terminate()
         proc.wait()
+
+
+@pytest_asyncio.fixture
+async def jetstream(nats_server_url: str) -> AsyncIterator[JetStream]:
+    client = await connect(nats_server_url)
+    try:
+        yield new_jetstream(client, strict=True)
+    finally:
+        await client.close()
+
+
+@pytest_asyncio.fixture
+async def atomic_server_url(nats_server_url: str) -> str:
+    """A live nats-server URL with atomic publish support."""
+    if not _ATOMIC_PUBLISH_SUPPORTED:
+        pytest.fail("nats-server 2.12+ is required for atomic batch publishing")
+    return nats_server_url
 
 
 @pytest_asyncio.fixture

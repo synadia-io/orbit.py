@@ -45,6 +45,25 @@ async for msg in jetstreamext.get_batch(js, "EVENTS", batch=100, seq=1):
     print(msg.sequence, msg.data)
 ```
 
+### Runnable atomic example
+
+[`examples/atomic_batch.py`](examples/atomic_batch.py) creates a uniquely named,
+atomic-enabled stream, commits a three-message order batch against a real
+nats-server 2.12+, and removes the example stream afterward. Start the server:
+
+```sh
+nats-server -js
+```
+
+Then run the example from the repository root:
+
+```sh
+uv run --package orbit-jetstreamext python orbit-jetstreamext/examples/atomic_batch.py
+```
+
+It connects to `nats://127.0.0.1:4222` by default. Set `NATS_URL` to use a
+different server.
+
 ## API
 
 ### `batch_publish(js, *, ack_first=True, ack_every=None, timeout=5.0)`
