@@ -1,4 +1,4 @@
-"""JetStream extensions built on the batch direct get API.
+"""JetStream batch retrieval and publishing extensions.
 
 Batch direct get lets a client fetch several stored messages with a single
 request instead of one round-trip per message. The server streams the matching
@@ -14,6 +14,11 @@ Two entry points are provided, mirroring orbit.go's ``jetstreamext``:
 
 Both require the stream to be configured with ``allow_direct`` and a
 nats-server new enough to support batch direct get (2.11+).
+
+Fast-ingest publishing is also available through :func:`fast_publish`. It is
+non-atomic: each message is stored as it arrives, with a persistent reply
+inbox and server-driven flow control. It requires ``allow_batched`` on the
+stream and nats-server 2.14+.
 
 Example::
 
@@ -51,12 +56,31 @@ except (ImportError, PackageNotFoundError):  # pragma: no cover
 
 __all__ = [
     "BatchUnsupportedError",
+    "FastPubAck",
+    "FastPublishClosedError",
+    "FastPublishConfigError",
+    "FastPublishEmptyBatchError",
+    "FastPublishError",
+    "FastPublishFlowError",
+    "FastPublishGapError",
+    "FastPublishInvalidBatchIdError",
+    "FastPublishInvalidPatternError",
+    "FastPublishNotEnabledError",
+    "FastPublishPublishError",
+    "FastPublishResponseError",
+    "FastPublishSubscribeError",
+    "FastPublishTimeoutError",
+    "FastPublishTooManyInflightError",
+    "FastPublishUnknownBatchIdError",
+    "FastPublisher",
+    "GapMode",
     "InvalidOptionError",
     "InvalidResponseError",
     "JetStreamExtError",
     "NoMessagesError",
     "RawStreamMsg",
     "SubjectRequiredError",
+    "fast_publish",
     "get_batch",
     "get_last_msgs_for",
 ]
@@ -290,3 +314,28 @@ def get_last_msgs_for(
         request["up_to_time"] = _isoformat(up_to_time)
 
     return _get_direct(js, stream, request, timeout)
+
+
+# Imported after JetStreamExtError is defined because the fast publisher's
+# typed error hierarchy derives from it.
+from orbit.jetstreamext.fast_publish import (  # noqa: E402
+    FastPubAck,
+    FastPublishClosedError,
+    FastPublishConfigError,
+    FastPublishEmptyBatchError,
+    FastPublisher,
+    FastPublishError,
+    FastPublishFlowError,
+    FastPublishGapError,
+    FastPublishInvalidBatchIdError,
+    FastPublishInvalidPatternError,
+    FastPublishNotEnabledError,
+    FastPublishPublishError,
+    FastPublishResponseError,
+    FastPublishSubscribeError,
+    FastPublishTimeoutError,
+    FastPublishTooManyInflightError,
+    FastPublishUnknownBatchIdError,
+    GapMode,
+    fast_publish,
+)
