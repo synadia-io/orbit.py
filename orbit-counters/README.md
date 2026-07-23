@@ -56,7 +56,7 @@ counter = await counters.get_counter(js, "COUNTERS")
 Single-subject operations (`add`, `load`, `get`) and source tracking are
 implemented. `get_multiple` (batch / wildcard queries) is **not yet
 implemented** — it needs batch direct get, which arrives with
-`orbit-jetstreamext`.
+`nats-jetstream-extra`.
 
 ## License
 

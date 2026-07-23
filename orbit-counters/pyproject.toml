@@ -26,7 +26,7 @@ dependencies = [
   # though it declares it as an optional extra, so it is required in practice.
   "nkeys>=0.1.0",
   # get_multiple is implemented on top of the batch direct get (multi_last).
-  "orbit-jetstreamext",
+  "nats-jetstream-extra",
 ]
 
 [project.urls]
@@ -35,7 +35,7 @@ Issues = "https://github.com/synadia-io/orbit.py/issues"
 Source = "https://github.com/synadia-io/orbit.py"
 
 [tool.uv.sources]
-orbit-jetstreamext = { workspace = true }
+nats-jetstream-extra = { workspace = true }
 
 [tool.uv.build-backend]
 module-name = "orbit.counters"

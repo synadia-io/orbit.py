@@ -10,7 +10,7 @@ dev = [
 ]
 
 [tool.uv]
-workspace = { members = ["orbit-*", "nats-extra"] }
+workspace = { members = ["orbit-*", "nats-*"] }
 
 [tool.ruff]
 line-length = 120

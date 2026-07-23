@@ -7,8 +7,7 @@ from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Any, cast
 
 import pytest
-
-from orbit.jetstreamext import (
+from nats.jetstream_extra import (
     AtomicPublishDuplicateMessageIDError,
     AtomicPublishNotEnabledError,
     AtomicPublishTooManyInflightError,

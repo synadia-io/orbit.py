@@ -24,12 +24,12 @@ Example::
 
     from nats.client import connect
     from nats.jetstream import new as jetstream
-    from orbit import jetstreamext
+    import nats.jetstream_extra as jetstream_extra
 
     nc = await connect("nats://localhost:4222")
     js = jetstream(nc)
 
-    async for msg in jetstreamext.get_last_msgs_for(js, "EVENTS", ["events.a", "events.b"]):
+    async for msg in jetstream_extra.get_last_msgs_for(js, "EVENTS", ["events.a", "events.b"]):
         print(msg.subject, msg.sequence, msg.data)
 """
 
@@ -50,7 +50,7 @@ if TYPE_CHECKING:
 try:
     from importlib.metadata import PackageNotFoundError, version
 
-    __version__ = version("orbit-jetstreamext")
+    __version__ = version("nats-jetstream-extra")
 except (ImportError, PackageNotFoundError):  # pragma: no cover
     __version__ = "unknown"
 
@@ -105,7 +105,7 @@ _MAX_SUBJECTS = 1024
 
 
 class JetStreamExtError(Exception):
-    """Base class for all jetstreamext errors."""
+    """Base class for all JetStream extension errors."""
 
 
 class InvalidOptionError(JetStreamExtError):

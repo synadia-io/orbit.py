@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import pytest
+from nats.jetstream_extra import NoMessagesError
 
 from orbit import counters
 from orbit.counters import (
@@ -14,7 +15,6 @@ from orbit.counters import (
     Entry,
     NoCounterForSubjectError,
 )
-from orbit.jetstreamext import NoMessagesError
 
 if TYPE_CHECKING:
     from nats.jetstream import JetStream
