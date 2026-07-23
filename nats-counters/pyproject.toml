@@ -3,13 +3,13 @@ requires = ["uv_build>=0.10.0,<0.11.0"]
 build-backend = "uv_build"
 
 [project]
-name = "orbit-counters"
+name = "nats-counters"
 version = "0.1.0"
 description = "Distributed counters built on NATS JetStream streams"
 readme = "README.md"
 requires-python = ">=3.13"
 license = "Apache-2.0"
-keywords = ["nats", "jetstream", "orbit", "counters"]
+keywords = ["nats", "jetstream", "counters", "distributed"]
 authors = [
   { name = "Casper Beyer", email = "casper@synadia.com" },
 ]
@@ -38,4 +38,4 @@ Source = "https://github.com/synadia-io/orbit.py"
 nats-jetstream-extra = { workspace = true }
 
 [tool.uv.build-backend]
-module-name = "orbit.counters"
+module-name = "nats.counters"

@@ -1,4 +1,4 @@
-# orbit-counters
+# nats-counters
 
 Distributed counters built on NATS JetStream streams.
 
@@ -9,7 +9,7 @@ arbitrary-precision counter, and increments are atomic.
 ## Install
 
 ```sh
-uv add orbit-counters
+uv add nats-counters
 ```
 
 ## Usage
@@ -17,7 +17,7 @@ uv add orbit-counters
 ```python
 from nats.client import connect
 from nats.jetstream import new as jetstream
-from orbit import counters
+from nats import counters
 
 nc = await connect("nats://localhost:4222")
 js = jetstream(nc)
@@ -53,10 +53,9 @@ counter = await counters.get_counter(js, "COUNTERS")
 
 ## Status
 
-Single-subject operations (`add`, `load`, `get`) and source tracking are
-implemented. `get_multiple` (batch / wildcard queries) is **not yet
-implemented** — it needs batch direct get, which arrives with
-`nats-jetstream-extra`.
+Single-subject operations (`add`, `load`, `get`), batch and wildcard queries
+(`get_multiple`), and source tracking are implemented. Batch queries use the
+batch direct get support provided by `nats-jetstream-extra`.
 
 ## License
 

@@ -6,6 +6,7 @@ import asyncio
 from collections.abc import Callable
 
 import pytest
+
 from nats.client.message import Message, Status
 from nats.extra import RequestMany, TerminationReason, request_many
 

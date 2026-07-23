@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import pytest
-from nats.client.message import Headers
 
-from orbit.counters import (
+from nats.client.message import Headers
+from nats.counters import (
     COUNTER_SOURCES_HEADER,
     InvalidCounterValueError,
     _parse_counter_value,

@@ -10,6 +10,7 @@ from collections.abc import AsyncIterator
 
 import pytest
 import pytest_asyncio
+
 from nats.client import Client, connect
 
 _NATS_SERVER = shutil.which("nats-server")
