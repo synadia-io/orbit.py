@@ -21,13 +21,36 @@ jobs:
             - name: Check out repository
               uses: actions/checkout@v5
 
+            - name: Set up Python
+              uses: actions/setup-python@v6
+              with:
+                  python-version: "3.13"
+
             - name: Discover packages with tests
               id: find
               run: |
-                  shopt -s nullglob
-                  projects=$(for dir in orbit-*/; do
-                      [ -d "${dir}tests" ] && echo "${dir%/}"
-                  done | jq -R -s -c 'split("\n") | map(select(length > 0))')
+                  projects=$(python3 <<'PY'
+                  import glob
+                  import json
+                  import tomllib
+                  from pathlib import Path
+
+                  with Path("pyproject.toml").open("rb") as file:
+                      workspace = tomllib.load(file)["tool"]["uv"]["workspace"]
+
+                  def expand(patterns):
+                      return {Path(path) for pattern in patterns for path in glob.glob(pattern)}
+
+                  members = expand(workspace["members"])
+                  excluded = expand(workspace.get("exclude", []))
+                  projects = sorted(
+                      path.as_posix()
+                      for path in members - excluded
+                      if (path / "pyproject.toml").is_file() and (path / "tests").is_dir()
+                  )
+                  print(json.dumps(projects))
+                  PY
+                  )
                   echo "projects=$projects" >> "$GITHUB_OUTPUT"
                   echo "Discovered: $projects"
 

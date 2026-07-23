@@ -112,11 +112,4 @@ jobs:
               uses: astral-sh/setup-uv@v6
 
             - name: Build all workspace packages
-              run: |
-                  shopt -s nullglob
-                  packages=(orbit-*/pyproject.toml)
-                  if [ ${#packages[@]} -eq 0 ]; then
-                      echo "No packages to build."
-                      exit 0
-                  fi
-                  uv build --all-packages
+              run: uv build --all-packages
