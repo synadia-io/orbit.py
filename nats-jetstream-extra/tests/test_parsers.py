@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import timezone
 
 import pytest
+
 from nats.client.message import Headers, Message, Status
 from nats.jetstream_extra import (
     BatchUnsupportedError,

@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 
 import pytest
+
 from nats.client import connect
 from nats.jetstream import new as new_jetstream
 from nats.jetstream.errors import StreamNotFoundError
