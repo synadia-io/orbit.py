@@ -3,13 +3,13 @@ requires = ["uv_build>=0.10.0,<0.11.0"]
 build-backend = "uv_build"
 
 [project]
-name = "orbit-jetstreamext"
+name = "nats-jetstream-extra"
 version = "0.1.0"
 description = "JetStream extensions for NATS"
 readme = "README.md"
 requires-python = ">=3.13"
 license = "Apache-2.0"
-keywords = ["nats", "jetstream", "orbit"]
+keywords = ["nats", "jetstream", "extensions"]
 authors = [
   { name = "Casper Beyer", email = "casper@synadia.com" },
 ]
@@ -33,4 +33,4 @@ Issues = "https://github.com/synadia-io/orbit.py/issues"
 Source = "https://github.com/synadia-io/orbit.py"
 
 [tool.uv.build-backend]
-module-name = "orbit.jetstreamext"
+module-name = "nats.jetstream_extra"

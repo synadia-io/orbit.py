@@ -4,9 +4,9 @@ requires-python = ">=3.13"
 
 [manifest]
 members = [
-    "orbit-counters",
-    "orbit-jetstreamext",
     "nats-extra",
+    "nats-jetstream-extra",
+    "orbit-counters",
 ]
 
 [manifest.dependency-groups]
@@ -177,6 +177,21 @@ wheels = [
 ]
 
 [[package]]
+name = "nats-jetstream-extra"
+version = "0.1.0"
+source = { editable = "nats-jetstream-extra" }
+dependencies = [
+    { name = "nats-jetstream" },
+    { name = "nkeys" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "nats-jetstream", specifier = ">=0.3.0,<0.4" },
+    { name = "nkeys", specifier = ">=0.1.0" },
+]
+
+[[package]]
 name = "nkeys"
 version = "0.2.1"
 source = { registry = "https://pypi.org/simple" }
@@ -191,29 +206,14 @@ version = "0.1.0"
 source = { editable = "orbit-counters" }
 dependencies = [
     { name = "nats-jetstream" },
-    { name = "nkeys" },
-    { name = "orbit-jetstreamext" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "nats-jetstream", specifier = ">=0.3.0,<0.4" },
-    { name = "nkeys", specifier = ">=0.1.0" },
-    { name = "orbit-jetstreamext", editable = "orbit-jetstreamext" },
-]
-
-[[package]]
-name = "orbit-jetstreamext"
-version = "0.1.0"
-source = { editable = "orbit-jetstreamext" }
-dependencies = [
-    { name = "nats-jetstream" },
+    { name = "nats-jetstream-extra" },
     { name = "nkeys" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "nats-jetstream", specifier = ">=0.3.0,<0.4" },
+    { name = "nats-jetstream-extra", editable = "nats-jetstream-extra" },
     { name = "nkeys", specifier = ">=0.1.0" },
 ]
 
