@@ -1,11 +1,16 @@
-"""JetStream extensions built on the batch direct get API.
+"""JetStream atomic batch publishing and batch direct get extensions.
+
+Atomic batch publishing makes up to 1,000 messages visible together. Use
+:func:`batch_publish` for incremental ``add`` / ``commit`` / ``discard``
+control or :func:`publish_batch` for a regular or async iterable of complete
+messages. The target stream must enable ``allow_atomic``.
 
 Batch direct get lets a client fetch several stored messages with a single
 request instead of one round-trip per message. The server streams the matching
 messages back on a reply inbox and terminates the stream with an end-of-batch
 (EOB) sentinel.
 
-Two entry points are provided, mirroring orbit.go's ``jetstreamext``:
+The direct-get entry points mirror orbit.go's ``jetstreamext``:
 
 * :func:`get_batch` — a batch of messages from a starting point (sequence or
   time), optionally filtered by subject.
@@ -50,15 +55,36 @@ except (ImportError, PackageNotFoundError):  # pragma: no cover
     __version__ = "unknown"
 
 __all__ = [
+    "AtomicPublishDuplicateMessageIDError",
+    "AtomicPublishIncompleteError",
+    "AtomicPublishInvalidCommitError",
+    "AtomicPublishInvalidIDError",
+    "AtomicPublishMirrorError",
+    "AtomicPublishMissingSequenceError",
+    "AtomicPublishNotEnabledError",
+    "AtomicPublishTooManyInflightError",
+    "AtomicPublishUnsupportedHeaderError",
+    "BatchAck",
+    "BatchClosedError",
+    "BatchMessage",
+    "BatchPublishError",
+    "BatchPublishRequestError",
+    "BatchPublishServerError",
+    "BatchPublisher",
     "BatchUnsupportedError",
+    "BatchTooLargeError",
+    "EmptyBatchError",
     "InvalidOptionError",
+    "InvalidBatchAckError",
     "InvalidResponseError",
     "JetStreamExtError",
     "NoMessagesError",
     "RawStreamMsg",
     "SubjectRequiredError",
+    "batch_publish",
     "get_batch",
     "get_last_msgs_for",
+    "publish_batch",
 ]
 
 # Control-message markers used to frame a batch direct get response.
@@ -290,3 +316,29 @@ def get_last_msgs_for(
         request["up_to_time"] = _isoformat(up_to_time)
 
     return _get_direct(js, stream, request, timeout)
+
+
+# Imported last because batch publish errors extend JetStreamExtError.
+from .batch_publish import (  # noqa: E402
+    AtomicPublishDuplicateMessageIDError,
+    AtomicPublishIncompleteError,
+    AtomicPublishInvalidCommitError,
+    AtomicPublishInvalidIDError,
+    AtomicPublishMirrorError,
+    AtomicPublishMissingSequenceError,
+    AtomicPublishNotEnabledError,
+    AtomicPublishTooManyInflightError,
+    AtomicPublishUnsupportedHeaderError,
+    BatchAck,
+    BatchClosedError,
+    BatchMessage,
+    BatchPublisher,
+    BatchPublishError,
+    BatchPublishRequestError,
+    BatchPublishServerError,
+    BatchTooLargeError,
+    EmptyBatchError,
+    InvalidBatchAckError,
+    batch_publish,
+    publish_batch,
+)
