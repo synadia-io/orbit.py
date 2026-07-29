@@ -1,4 +1,4 @@
-"""JetStream atomic batch publishing and batch direct get extensions.
+"""JetStream batch retrieval and publishing extensions.
 
 Atomic batch publishing makes up to 1,000 messages visible together. Use
 :func:`batch_publish` for incremental ``add`` / ``commit`` / ``discard``
@@ -19,6 +19,11 @@ The direct-get entry points mirror orbit.go's ``jetstreamext``:
 
 Both require the stream to be configured with ``allow_direct`` and a
 nats-server new enough to support batch direct get (2.11+).
+
+Fast-ingest publishing is also available through :func:`fast_publish`. It is
+non-atomic: each message is stored as it arrives, with a persistent reply
+inbox and server-driven flow control. It requires ``allow_batched`` on the
+stream and nats-server 2.14+.
 
 Example::
 
@@ -74,14 +79,33 @@ __all__ = [
     "BatchUnsupportedError",
     "BatchTooLargeError",
     "EmptyBatchError",
-    "InvalidOptionError",
+    "FastPubAck",
+    "FastPublishClosedError",
+    "FastPublishConfigError",
+    "FastPublishEmptyBatchError",
+    "FastPublishError",
+    "FastPublishFlowError",
+    "FastPublishGapError",
+    "FastPublishInvalidBatchIdError",
+    "FastPublishInvalidPatternError",
+    "FastPublishNotEnabledError",
+    "FastPublishPublishError",
+    "FastPublishResponseError",
+    "FastPublishSubscribeError",
+    "FastPublishTimeoutError",
+    "FastPublishTooManyInflightError",
+    "FastPublishUnknownBatchIdError",
+    "FastPublisher",
+    "GapMode",
     "InvalidBatchAckError",
+    "InvalidOptionError",
     "InvalidResponseError",
     "JetStreamExtError",
     "NoMessagesError",
     "RawStreamMsg",
     "SubjectRequiredError",
     "batch_publish",
+    "fast_publish",
     "get_batch",
     "get_last_msgs_for",
     "publish_batch",
@@ -318,7 +342,7 @@ def get_last_msgs_for(
     return _get_direct(js, stream, request, timeout)
 
 
-# Imported last because batch publish errors extend JetStreamExtError.
+# Imported last because the publisher errors extend JetStreamExtError.
 from .batch_publish import (  # noqa: E402
     AtomicPublishDuplicateMessageIDError,
     AtomicPublishIncompleteError,
@@ -341,4 +365,25 @@ from .batch_publish import (  # noqa: E402
     InvalidBatchAckError,
     batch_publish,
     publish_batch,
+)
+from .fast_publish import (  # noqa: E402
+    FastPubAck,
+    FastPublishClosedError,
+    FastPublishConfigError,
+    FastPublishEmptyBatchError,
+    FastPublisher,
+    FastPublishError,
+    FastPublishFlowError,
+    FastPublishGapError,
+    FastPublishInvalidBatchIdError,
+    FastPublishInvalidPatternError,
+    FastPublishNotEnabledError,
+    FastPublishPublishError,
+    FastPublishResponseError,
+    FastPublishSubscribeError,
+    FastPublishTimeoutError,
+    FastPublishTooManyInflightError,
+    FastPublishUnknownBatchIdError,
+    GapMode,
+    fast_publish,
 )
