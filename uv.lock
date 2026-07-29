@@ -4,9 +4,9 @@ requires-python = ">=3.13"
 
 [manifest]
 members = [
+    "nats-counters",
     "nats-extra",
     "nats-jetstream-extra",
-    "orbit-counters",
 ]
 
 [manifest.dependency-groups]
@@ -165,6 +165,38 @@ wheels = [
 ]
 
 [[package]]
+name = "nats-counters"
+version = "0.1.0"
+source = { editable = "nats-counters" }
+dependencies = [
+    { name = "nats-jetstream" },
+    { name = "nats-jetstream-extra" },
+    { name = "nkeys" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "nats-jetstream", specifier = ">=0.3.0,<0.4" },
+    { name = "nats-jetstream-extra", editable = "nats-jetstream-extra" },
+    { name = "nkeys", specifier = ">=0.1.0" },
+]
+
+[[package]]
+name = "nats-extra"
+version = "0.1.0"
+source = { editable = "nats-extra" }
+dependencies = [
+    { name = "nats-core" },
+    { name = "nkeys" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "nats-core", specifier = ">=0.2.0,<0.3" },
+    { name = "nkeys", specifier = ">=0.1.0" },
+]
+
+[[package]]
 name = "nats-jetstream"
 version = "0.3.0"
 source = { registry = "https://pypi.org/simple" }
@@ -199,38 +231,6 @@ dependencies = [
     { name = "pynacl" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/e1/8d/d17254baea57fe4a7dd1ba89827d3cf0a21106988ec8971a46bfc5239b15/nkeys-0.2.1.tar.gz", hash = "sha256:3a201dcd203d8bb05ba2884d441b2c92918b2a537a10d324e73738887dde9da3", size = 10667, upload-time = "2024-09-11T06:32:09.03Z" }
-
-[[package]]
-name = "orbit-counters"
-version = "0.1.0"
-source = { editable = "orbit-counters" }
-dependencies = [
-    { name = "nats-jetstream" },
-    { name = "nats-jetstream-extra" },
-    { name = "nkeys" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "nats-jetstream", specifier = ">=0.3.0,<0.4" },
-    { name = "nats-jetstream-extra", editable = "nats-jetstream-extra" },
-    { name = "nkeys", specifier = ">=0.1.0" },
-]
-
-[[package]]
-name = "nats-extra"
-version = "0.1.0"
-source = { editable = "nats-extra" }
-dependencies = [
-    { name = "nats-core" },
-    { name = "nkeys" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "nats-core", specifier = ">=0.2.0,<0.3" },
-    { name = "nkeys", specifier = ">=0.1.0" },
-]
 
 [[package]]
 name = "packaging"
