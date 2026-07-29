@@ -1,8 +1,7 @@
 """Integration fixtures: launch a local nats-server and connect.
 
-The integration tests need a nats-server binary (2.11+ for batch direct get).
-If none is available on PATH, batch-retrieval tests skip. Fast-ingest tests fail
-because all fast-ingest coverage requires a real nats-server 2.14 or newer.
+The integration tests require a nats-server binary: 2.11+ for batch direct get,
+2.12+ for atomic publishing, and 2.14+ for fast-ingest publishing.
 """
 
 from __future__ import annotations
@@ -12,7 +11,7 @@ import re
 import shutil
 import socket
 import subprocess
-from collections.abc import AsyncIterator, Iterator
+from collections.abc import AsyncIterator
 from pathlib import Path
 
 import pytest
@@ -38,6 +37,8 @@ def _server_version() -> tuple[int, int, int] | None:
 # Batch direct get requires nats-server 2.11+.
 _VERSION = _server_version()
 _BATCH_SUPPORTED = _VERSION is not None and _VERSION >= (2, 11, 0)
+_ATOMIC_PUBLISH_SUPPORTED = _VERSION is not None and _VERSION >= (2, 12, 0)
+_ATOMIC_MESSAGE_ID_SUPPORTED = _VERSION is not None and _VERSION >= (2, 12, 1)
 _FAST_PUBLISH_SUPPORTED = _VERSION is not None and _VERSION >= (2, 14, 0)
 
 
@@ -55,13 +56,13 @@ def _free_port() -> int:
         return int(sock.getsockname()[1])
 
 
-@pytest.fixture
-def nats_server_url(tmp_path: Path) -> Iterator[str]:
-    """Run an isolated JetStream-enabled nats-server and yield its URL."""
+@pytest_asyncio.fixture
+async def nats_server_url(tmp_path: Path) -> AsyncIterator[str]:
+    """Run a ready, isolated JetStream-enabled nats-server and yield its URL."""
 
     server_bin = _NATS_SERVER
     if server_bin is None or not _BATCH_SUPPORTED:
-        pytest.skip("nats-server 2.11+ is required for batch direct get integration tests")
+        pytest.fail("nats-server 2.11+ is required for integration tests")
 
     port = _free_port()
     proc = subprocess.Popen(
@@ -69,68 +70,73 @@ def nats_server_url(tmp_path: Path) -> Iterator[str]:
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
+    url = f"nats://127.0.0.1:{port}"
+    probe = None
     try:
-        yield f"nats://127.0.0.1:{port}"
+        for _ in range(50):
+            try:
+                probe = await connect(url)
+                break
+            except Exception:
+                await asyncio.sleep(0.1)
+        if probe is None:
+            pytest.fail("could not connect to nats-server")
+        await probe.close()
+        yield url
     finally:
+        if probe is not None:
+            await probe.close()
         proc.terminate()
         proc.wait()
 
 
 @pytest_asyncio.fixture
 async def jetstream(nats_server_url: str) -> AsyncIterator[JetStream]:
-    client = None
-    try:
-        for _ in range(50):
-            try:
-                client = await connect(nats_server_url)
-                break
-            except Exception:
-                await asyncio.sleep(0.1)
-        if client is None:
-            pytest.skip("could not connect to nats-server")
-        yield new_jetstream(client, strict=True)
-    finally:
-        if client is not None:
-            await client.close()
-
-
-@pytest.fixture
-def fast_server_url(
-    require_fast_publish_server: None,
-    tmp_path: Path,
-) -> Iterator[str]:
-    """Run the dedicated fail-fast nats-server used by fast-ingest tests."""
-
-    server_bin = _NATS_SERVER
-    if server_bin is None:
-        pytest.fail("nats-server 2.14+ is required for fast-ingest publish integration tests")
-    port = _free_port()
-    proc = subprocess.Popen(
-        [server_bin, "-js", "-p", str(port), "-sd", str(tmp_path)],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
-    try:
-        yield f"nats://127.0.0.1:{port}"
-    finally:
-        proc.terminate()
-        proc.wait()
-
-
-@pytest_asyncio.fixture
-async def fast_jetstream(fast_server_url: str) -> AsyncIterator[JetStream]:
-    """Connect to the dedicated fast server, failing rather than skipping."""
-
-    client = None
-    for _ in range(50):
-        try:
-            client = await connect(fast_server_url)
-            break
-        except Exception:
-            await asyncio.sleep(0.1)
-    if client is None:
-        pytest.fail("could not connect to nats-server 2.14+ for fast-ingest tests")
+    client = await connect(nats_server_url)
     try:
         yield new_jetstream(client, strict=True)
     finally:
         await client.close()
+
+
+@pytest_asyncio.fixture
+async def fast_server_url(
+    require_fast_publish_server: None,
+    nats_server_url: str,
+) -> str:
+    """A live nats-server URL with fast-ingest publish support."""
+    return nats_server_url
+
+
+@pytest_asyncio.fixture
+async def fast_jetstream(fast_server_url: str) -> AsyncIterator[JetStream]:
+    """A live JetStream context on a server with fast-ingest support."""
+    client = await connect(fast_server_url)
+    try:
+        yield new_jetstream(client, strict=True)
+    finally:
+        await client.close()
+
+
+@pytest_asyncio.fixture
+async def atomic_server_url(nats_server_url: str) -> str:
+    """A live nats-server URL with atomic publish support."""
+    if not _ATOMIC_PUBLISH_SUPPORTED:
+        pytest.fail("nats-server 2.12+ is required for atomic batch publishing")
+    return nats_server_url
+
+
+@pytest_asyncio.fixture
+async def atomic_jetstream(jetstream: JetStream) -> JetStream:
+    """A live JetStream context on a server with atomic publish support."""
+    if not _ATOMIC_PUBLISH_SUPPORTED:
+        pytest.fail("nats-server 2.12+ is required for atomic batch publishing")
+    return jetstream
+
+
+@pytest_asyncio.fixture
+async def atomic_message_id_jetstream(atomic_jetstream: JetStream) -> JetStream:
+    """A live context supporting message IDs inside atomic batches."""
+    if not _ATOMIC_MESSAGE_ID_SUPPORTED:
+        pytest.skip("nats-server 2.12.1+ is required for message IDs in atomic batches")
+    return atomic_jetstream

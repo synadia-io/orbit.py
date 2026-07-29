@@ -6,6 +6,7 @@ requires-python = ">=3.13"
 members = [
     "orbit-counters",
     "orbit-jetstreamext",
+    "nats-extra",
 ]
 
 [manifest.dependency-groups]
@@ -213,6 +214,21 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "nats-jetstream", specifier = ">=0.3.0,<0.4" },
+    { name = "nkeys", specifier = ">=0.1.0" },
+]
+
+[[package]]
+name = "nats-extra"
+version = "0.1.0"
+source = { editable = "nats-extra" }
+dependencies = [
+    { name = "nats-core" },
+    { name = "nkeys" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "nats-core", specifier = ">=0.2.0,<0.3" },
     { name = "nkeys", specifier = ">=0.1.0" },
 ]
 

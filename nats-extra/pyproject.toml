@@ -1,0 +1,36 @@
+[build-system]
+requires = ["uv_build>=0.10.0,<0.11.0"]
+build-backend = "uv_build"
+
+[project]
+name = "nats-extra"
+version = "0.1.0"
+description = "Core NATS extensions"
+readme = "README.md"
+requires-python = ">=3.13"
+license = "Apache-2.0"
+keywords = ["nats", "request-reply", "scatter-gather"]
+authors = [
+  { name = "Casper Beyer", email = "casper@synadia.com" },
+]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Programming Language :: Python",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: Implementation :: CPython",
+  "Programming Language :: Python :: Implementation :: PyPy",
+]
+dependencies = [
+  "nats-core>=0.2.0,<0.3",
+  # nats-core imports nkeys at module load even though it declares it as an
+  # optional extra, so it is required in practice.
+  "nkeys>=0.1.0",
+]
+
+[project.urls]
+Documentation = "https://github.com/synadia-io/orbit.py"
+Issues = "https://github.com/synadia-io/orbit.py/issues"
+Source = "https://github.com/synadia-io/orbit.py"
+
+[tool.uv.build-backend]
+module-name = "nats.extra"
