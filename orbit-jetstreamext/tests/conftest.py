@@ -1,4 +1,8 @@
-"""Integration fixtures: launch a local nats-server and connect."""
+"""Integration fixtures: launch a local nats-server and connect.
+
+The integration tests require a nats-server binary: 2.11+ for batch direct get,
+2.12+ for atomic publishing, and 2.14+ for fast-ingest publishing.
+"""
 
 from __future__ import annotations
 
@@ -35,6 +39,15 @@ _VERSION = _server_version()
 _BATCH_SUPPORTED = _VERSION is not None and _VERSION >= (2, 11, 0)
 _ATOMIC_PUBLISH_SUPPORTED = _VERSION is not None and _VERSION >= (2, 12, 0)
 _ATOMIC_MESSAGE_ID_SUPPORTED = _VERSION is not None and _VERSION >= (2, 12, 1)
+_FAST_PUBLISH_SUPPORTED = _VERSION is not None and _VERSION >= (2, 14, 0)
+
+
+@pytest.fixture
+def require_fast_publish_server() -> None:
+    """Fail fast-ingest tests unless nats-server 2.14+ is available."""
+
+    if not _FAST_PUBLISH_SUPPORTED:
+        pytest.fail("nats-server 2.14+ is required for fast-ingest publish integration tests")
 
 
 def _free_port() -> int:
@@ -45,6 +58,8 @@ def _free_port() -> int:
 
 @pytest_asyncio.fixture
 async def nats_server_url(tmp_path: Path) -> AsyncIterator[str]:
+    """Run a ready, isolated JetStream-enabled nats-server and yield its URL."""
+
     server_bin = _NATS_SERVER
     if server_bin is None or not _BATCH_SUPPORTED:
         pytest.fail("nats-server 2.11+ is required for integration tests")
@@ -78,6 +93,25 @@ async def nats_server_url(tmp_path: Path) -> AsyncIterator[str]:
 @pytest_asyncio.fixture
 async def jetstream(nats_server_url: str) -> AsyncIterator[JetStream]:
     client = await connect(nats_server_url)
+    try:
+        yield new_jetstream(client, strict=True)
+    finally:
+        await client.close()
+
+
+@pytest_asyncio.fixture
+async def fast_server_url(
+    require_fast_publish_server: None,
+    nats_server_url: str,
+) -> str:
+    """A live nats-server URL with fast-ingest publish support."""
+    return nats_server_url
+
+
+@pytest_asyncio.fixture
+async def fast_jetstream(fast_server_url: str) -> AsyncIterator[JetStream]:
+    """A live JetStream context on a server with fast-ingest support."""
+    client = await connect(fast_server_url)
     try:
         yield new_jetstream(client, strict=True)
     finally:
