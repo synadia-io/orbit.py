@@ -13,7 +13,7 @@ Example::
 
     from nats.client import connect
     from nats.jetstream import new as jetstream
-    from orbit import counters
+    from nats import counters
 
     nc = await connect("nats://localhost:4222")
     js = jetstream(nc)
@@ -46,7 +46,7 @@ if TYPE_CHECKING:
 try:
     from importlib.metadata import PackageNotFoundError, version
 
-    __version__ = version("orbit-counters")
+    __version__ = version("nats-counters")
 except (ImportError, PackageNotFoundError):  # pragma: no cover
     __version__ = "unknown"
 

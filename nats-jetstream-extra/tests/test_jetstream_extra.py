@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-import nats.jetstream_extra as jetstream_extra
 import pytest
+
+import nats.jetstream_extra as jetstream_extra
 from nats.jetstream_extra import (
     InvalidOptionError,
     NoMessagesError,

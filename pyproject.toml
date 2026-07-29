@@ -10,7 +10,7 @@ dev = [
 ]
 
 [tool.uv]
-workspace = { members = ["orbit-*", "nats-*"] }
+workspace = { members = ["nats-*"] }
 
 [tool.ruff]
 line-length = 120
@@ -21,7 +21,7 @@ select = ["E", "F", "W", "I", "B006"]
 ignore = ["E501"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["orbit"]
+known-first-party = ["nats"]
 
 [tool.ruff.format]
 quote-style = "double"

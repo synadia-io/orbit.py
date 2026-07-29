@@ -14,6 +14,7 @@ import weakref
 from typing import TYPE_CHECKING, Any
 
 import pytest
+
 from nats.client import connect
 from nats.client.message import Headers, Message
 from nats.jetstream import new as new_jetstream
