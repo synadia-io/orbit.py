@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
+
 from nats.jetstream.errors import StreamNotFoundError
 
 if TYPE_CHECKING:

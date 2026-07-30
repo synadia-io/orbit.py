@@ -1,13 +1,13 @@
-"""Unit tests for the pure response parsing in orbit.jetstreamext."""
+"""Unit tests for the pure response parsing in nats.jetstream_extra."""
 
 from __future__ import annotations
 
 from datetime import timezone
 
 import pytest
-from nats.client.message import Headers, Message, Status
 
-from orbit.jetstreamext import (
+from nats.client.message import Headers, Message, Status
+from nats.jetstream_extra import (
     BatchUnsupportedError,
     InvalidResponseError,
     NoMessagesError,

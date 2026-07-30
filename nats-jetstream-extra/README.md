@@ -1,4 +1,4 @@
-# orbit-jetstreamext
+# nats-jetstream-extra
 
 JetStream batch retrieval and publishing extensions for NATS.
 
@@ -19,15 +19,15 @@ requires a stream configured with `allow_batched` and nats-server 2.14+.
 ## Install
 
 ```sh
-pip install orbit-jetstreamext
+pip install nats-jetstream-extra
 ```
 
 ## Usage
 
 ```python
+import nats.jetstream_extra as jetstream_extra
 from nats.client import connect
 from nats.jetstream import new as jetstream
-from orbit import jetstreamext
 
 nc = await connect("nats://localhost:4222")
 js = jetstream(nc)
@@ -42,22 +42,22 @@ await js.create_stream(
 )
 
 # Atomic all-or-nothing publishing.
-batch = jetstreamext.batch_publish(js, ack_every=100)
+batch = jetstream_extra.batch_publish(js, ack_every=100)
 await batch.add("events.order", b"order-123")
 await batch.add("events.payment", b"payment-456")
 ack = await batch.commit("events.complete", b"done")
 print(ack.batch_id, ack.batch_size)
 
 # Last message for each of several subjects (wildcards allowed).
-async for msg in jetstreamext.get_last_msgs_for(js, "EVENTS", ["events.a", "events.b"]):
+async for msg in jetstream_extra.get_last_msgs_for(js, "EVENTS", ["events.a", "events.b"]):
     print(msg.subject, msg.sequence, msg.data)
 
 # A batch of messages from a starting point.
-async for msg in jetstreamext.get_batch(js, "EVENTS", batch=100, seq=1):
+async for msg in jetstream_extra.get_batch(js, "EVENTS", batch=100, seq=1):
     print(msg.sequence, msg.data)
 
 # Non-atomic high-throughput publishing. Each add is stored immediately.
-batch = jetstreamext.fast_publish(js, flow=100, max_outstanding_acks=2)
+batch = jetstream_extra.fast_publish(js, flow=100, max_outstanding_acks=2)
 await batch.add("events.a", b"one")
 await batch.add("events.b", b"two")
 
@@ -84,7 +84,7 @@ nats-server -js
 Then run the example from the repository root in another terminal:
 
 ```sh
-uv run --package orbit-jetstreamext python orbit-jetstreamext/examples/fast_publish.py
+uv run --package nats-jetstream-extra python nats-jetstream-extra/examples/fast_publish.py
 ```
 
 Set `NATS_URL` to use a server other than `nats://127.0.0.1:4222`.
@@ -102,7 +102,7 @@ nats-server -js
 Then run the example from the repository root:
 
 ```sh
-uv run --package orbit-jetstreamext python orbit-jetstreamext/examples/atomic_batch.py
+uv run --package nats-jetstream-extra python nats-jetstream-extra/examples/atomic_batch.py
 ```
 
 It connects to `nats://127.0.0.1:4222` by default. Set `NATS_URL` to use a
@@ -135,11 +135,11 @@ batch. The helper buffers one item so the last input message carries the commit
 marker; it does not add a synthetic message.
 
 ```python
-ack = await jetstreamext.publish_batch(
+ack = await jetstream_extra.publish_batch(
     js,
     [
-        jetstreamext.BatchMessage("events.a", b"one"),
-        jetstreamext.BatchMessage("events.b", b"two", {"X-Source": "import"}),
+        jetstream_extra.BatchMessage("events.a", b"one"),
+        jetstream_extra.BatchMessage("events.b", b"two", {"X-Source": "import"}),
     ],
 )
 ```

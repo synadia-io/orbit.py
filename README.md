@@ -6,15 +6,18 @@ own distribution so you depend only on what you use.
 Current utilities:
 
 - `nats-extra` — streaming request-many and scatter-gather for Core NATS.
-- `orbit-jetstreamext` — batch direct-get extensions for JetStream.
-- `orbit-counters` — distributed JetStream counters.
+- `nats-jetstream-extra` — atomic publishing and batch direct-get extensions for JetStream.
+- `nats-counters` — distributed JetStream counters.
 
 ## Layout
 
 A [uv workspace](https://docs.astral.sh/uv/concepts/projects/workspaces/): each
-utility is an independently installable member. Most use the shared `orbit`
-namespace (`orbit-<name>` → `import orbit.<name>`); `nats-extra` extends the
-`nats` namespace and imports as `nats.extra`.
+utility is an independently installable member under the shared `nats`
+namespace:
+
+- `nats-extra` → `import nats.extra`
+- `nats-jetstream-extra` → `import nats.jetstream_extra`
+- `nats-counters` → `import nats.counters`
 
 ## Development
 

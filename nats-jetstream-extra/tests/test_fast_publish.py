@@ -14,11 +14,11 @@ import weakref
 from typing import TYPE_CHECKING, Any
 
 import pytest
+
 from nats.client import connect
 from nats.client.message import Headers, Message
 from nats.jetstream import new as new_jetstream
-
-from orbit.jetstreamext import (
+from nats.jetstream_extra import (
     FastPublishClosedError,
     FastPublishConfigError,
     FastPublishEmptyBatchError,
@@ -37,7 +37,7 @@ from orbit.jetstreamext import (
     GapMode,
     fast_publish,
 )
-from orbit.jetstreamext.fast_publish import _consume_task_exception, _Operation, _reply
+from nats.jetstream_extra.fast_publish import _consume_task_exception, _Operation, _reply
 
 if TYPE_CHECKING:
     from collections.abc import Callable

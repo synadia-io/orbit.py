@@ -7,9 +7,9 @@ import json
 from typing import TYPE_CHECKING, Any
 
 import pytest
-from nats.client.message import Headers, Message
 
-from orbit.jetstreamext import (
+from nats.client.message import Headers, Message
+from nats.jetstream_extra import (
     AtomicPublishDuplicateMessageIDError,
     AtomicPublishIncompleteError,
     AtomicPublishInvalidCommitError,

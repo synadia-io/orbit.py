@@ -13,7 +13,7 @@ Example::
 
     from nats.client import connect
     from nats.jetstream import new as jetstream
-    from orbit import counters
+    from nats import counters
 
     nc = await connect("nats://localhost:4222")
     js = jetstream(nc)
@@ -33,9 +33,8 @@ import json
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+import nats.jetstream_extra as jetstream_extra
 from nats.jetstream.errors import MessageNotFoundError, StreamNotFoundError
-
-from orbit import jetstreamext
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -47,7 +46,7 @@ if TYPE_CHECKING:
 try:
     from importlib.metadata import PackageNotFoundError, version
 
-    __version__ = version("orbit-counters")
+    __version__ = version("nats-counters")
 except (ImportError, PackageNotFoundError):  # pragma: no cover
     __version__ = "unknown"
 
@@ -207,7 +206,7 @@ class Counter:
             InvalidCounterValueError: if a matched message is malformed; this
                 ends iteration (unlike per-subject omission of misses).
         """
-        async for msg in jetstreamext.get_last_msgs_for(self._js, self._stream.name, subjects):
+        async for msg in jetstream_extra.get_last_msgs_for(self._js, self._stream.name, subjects):
             yield _entry_from_message(msg.subject, msg.data, msg.headers)
 
     async def _get_last(self, subject: str) -> StreamMessage:

@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING, cast
 from nats.client.message import Headers, Message
 from nats.jetstream import PublishAck
 
-from orbit.jetstreamext import JetStreamExtError
+from . import JetStreamExtError
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Mapping

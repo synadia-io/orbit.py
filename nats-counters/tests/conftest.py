@@ -17,6 +17,7 @@ from pathlib import Path
 
 import pytest
 import pytest_asyncio
+
 from nats.client import connect
 from nats.jetstream import JetStream
 from nats.jetstream import new as new_jetstream

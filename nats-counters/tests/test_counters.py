@@ -1,4 +1,4 @@
-"""Integration tests for orbit.counters against a live nats-server."""
+"""Integration tests for nats.counters against a live nats-server."""
 
 from __future__ import annotations
 
@@ -6,15 +6,15 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from orbit import counters
-from orbit.counters import (
+from nats import counters
+from nats.counters import (
     Counter,
     CounterNotEnabledError,
     CounterNotFoundError,
     Entry,
     NoCounterForSubjectError,
 )
-from orbit.jetstreamext import NoMessagesError
+from nats.jetstream_extra import NoMessagesError
 
 if TYPE_CHECKING:
     from nats.jetstream import JetStream

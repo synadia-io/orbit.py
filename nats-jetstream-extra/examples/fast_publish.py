@@ -10,8 +10,7 @@ import sys
 from nats.client import connect
 from nats.jetstream import new as new_jetstream
 from nats.jetstream.errors import StreamNotFoundError
-
-from orbit.jetstreamext import fast_publish
+from nats.jetstream_extra import fast_publish
 
 
 async def main() -> None:

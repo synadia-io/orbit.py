@@ -6,12 +6,11 @@ import asyncio
 import os
 import uuid
 
+import nats.jetstream_extra as jetstream_extra
 from nats.client import connect
 from nats.jetstream import JetStream
 from nats.jetstream import new as new_jetstream
 from nats.jetstream.errors import StreamNotFoundError
-
-from orbit import jetstreamext
 
 
 async def publish_order(js: JetStream) -> None:
@@ -26,7 +25,7 @@ async def publish_order(js: JetStream) -> None:
             allow_atomic=True,
         )
 
-        batch = jetstreamext.batch_publish(js)
+        batch = jetstream_extra.batch_publish(js)
         await batch.add(f"{subject_prefix}.created", b'{"order_id":"1001"}')
         await batch.add(f"{subject_prefix}.reserved", b'{"order_id":"1001","items":2}')
         ack = await batch.commit(f"{subject_prefix}.confirmed", b'{"order_id":"1001"}')

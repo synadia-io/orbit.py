@@ -4,9 +4,9 @@ requires-python = ">=3.13"
 
 [manifest]
 members = [
-    "orbit-counters",
-    "orbit-jetstreamext",
+    "nats-counters",
     "nats-extra",
+    "nats-jetstream-extra",
 ]
 
 [manifest.dependency-groups]
@@ -165,55 +165,19 @@ wheels = [
 ]
 
 [[package]]
-name = "nats-jetstream"
-version = "0.3.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "nats-core" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/1d/e0/1d4e8aeb510238f895bc8f9f2e65a02a4a3aeadca361cbef876e89dfe4a0/nats_jetstream-0.3.0.tar.gz", hash = "sha256:e76657a9cf34e17dbf47fa092401eb626aa4e720812f982a4963cb84b520d072", size = 48591, upload-time = "2026-05-10T12:54:39.884Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/84/f5/59bb499ac8053e0343e504cfd382a6cc3b281b9e67627c6cd6d850c14a01/nats_jetstream-0.3.0-py3-none-any.whl", hash = "sha256:5ff60b2674bdf7cb5ec01fcddc81b6ffe8c37310cc4130c6aee2aad208f68e54", size = 54936, upload-time = "2026-05-10T12:54:41.193Z" },
-]
-
-[[package]]
-name = "nkeys"
-version = "0.2.1"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "pynacl" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/e1/8d/d17254baea57fe4a7dd1ba89827d3cf0a21106988ec8971a46bfc5239b15/nkeys-0.2.1.tar.gz", hash = "sha256:3a201dcd203d8bb05ba2884d441b2c92918b2a537a10d324e73738887dde9da3", size = 10667, upload-time = "2024-09-11T06:32:09.03Z" }
-
-[[package]]
-name = "orbit-counters"
+name = "nats-counters"
 version = "0.1.0"
-source = { editable = "orbit-counters" }
+source = { editable = "nats-counters" }
 dependencies = [
     { name = "nats-jetstream" },
-    { name = "nkeys" },
-    { name = "orbit-jetstreamext" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "nats-jetstream", specifier = ">=0.3.0,<0.4" },
-    { name = "nkeys", specifier = ">=0.1.0" },
-    { name = "orbit-jetstreamext", editable = "orbit-jetstreamext" },
-]
-
-[[package]]
-name = "orbit-jetstreamext"
-version = "0.1.0"
-source = { editable = "orbit-jetstreamext" }
-dependencies = [
-    { name = "nats-jetstream" },
+    { name = "nats-jetstream-extra" },
     { name = "nkeys" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "nats-jetstream", specifier = ">=0.3.0,<0.4" },
+    { name = "nats-jetstream-extra", editable = "nats-jetstream-extra" },
     { name = "nkeys", specifier = ">=0.1.0" },
 ]
 
@@ -231,6 +195,42 @@ requires-dist = [
     { name = "nats-core", specifier = ">=0.2.0,<0.3" },
     { name = "nkeys", specifier = ">=0.1.0" },
 ]
+
+[[package]]
+name = "nats-jetstream"
+version = "0.3.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "nats-core" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/1d/e0/1d4e8aeb510238f895bc8f9f2e65a02a4a3aeadca361cbef876e89dfe4a0/nats_jetstream-0.3.0.tar.gz", hash = "sha256:e76657a9cf34e17dbf47fa092401eb626aa4e720812f982a4963cb84b520d072", size = 48591, upload-time = "2026-05-10T12:54:39.884Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/84/f5/59bb499ac8053e0343e504cfd382a6cc3b281b9e67627c6cd6d850c14a01/nats_jetstream-0.3.0-py3-none-any.whl", hash = "sha256:5ff60b2674bdf7cb5ec01fcddc81b6ffe8c37310cc4130c6aee2aad208f68e54", size = 54936, upload-time = "2026-05-10T12:54:41.193Z" },
+]
+
+[[package]]
+name = "nats-jetstream-extra"
+version = "0.1.0"
+source = { editable = "nats-jetstream-extra" }
+dependencies = [
+    { name = "nats-jetstream" },
+    { name = "nkeys" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "nats-jetstream", specifier = ">=0.3.0,<0.4" },
+    { name = "nkeys", specifier = ">=0.1.0" },
+]
+
+[[package]]
+name = "nkeys"
+version = "0.2.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pynacl" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/e1/8d/d17254baea57fe4a7dd1ba89827d3cf0a21106988ec8971a46bfc5239b15/nkeys-0.2.1.tar.gz", hash = "sha256:3a201dcd203d8bb05ba2884d441b2c92918b2a537a10d324e73738887dde9da3", size = 10667, upload-time = "2024-09-11T06:32:09.03Z" }
 
 [[package]]
 name = "packaging"
